@@ -25,10 +25,10 @@ Goal: Setup FastAPI, PostgreSQL/PostGIS, and Next.js boilerplate via Docker Comp
 - [ ] `docker compose up` runs successfully and endpoints return 200 OK.
 
 ## Phase 2 — Chat Webhook & AI Pipeline
-Goal: Receive messages, process with Qwen LLM, and parse responses.
-- [ ] Create webhook endpoints for WhatsApp/Telegram.
+Goal: Receive Telegram messages, process with Qwen LLM, and parse responses.
+- [x] BE-003: Create Telegram webhook ingestion skeleton.
 - [ ] Implement local LLM inference client (Qwen).
 - [ ] Create prompt chains for extracting incident details.
 
 **Verification gate:**
-- [ ] Send a mock webhook payload and verify the LLM extracts the correct JSON representation of an incident.
+- [ ] Send a mock Telegram webhook payload and verify the LLM extracts the correct JSON representation of an incident.
