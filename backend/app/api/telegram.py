@@ -19,8 +19,8 @@ def receive_telegram_webhook(update: TelegramWebhookUpdate) -> TelegramWebhookAc
     incident creation, and dispatch logic.
     """
 
+    # Telegram message payload when this update includes a message.
     message = update.message
-    """Telegram message payload when this update includes a message."""
 
     return TelegramWebhookAccepted(
         update_id=update.update_id,
