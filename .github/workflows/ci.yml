@@ -10,6 +10,10 @@ on:
       - OG_Worker
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend-test-and-compose:
     name: Backend Test and Docker Compose
