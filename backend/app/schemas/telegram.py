@@ -4,39 +4,53 @@ from pydantic import BaseModel, Field
 
 
 class TelegramUser(BaseModel):
-    id: int
-    is_bot: bool | None = None
-    first_name: str | None = None
-    last_name: str | None = None
-    username: str | None = None
+    """Telegram user metadata included on inbound webhook messages."""
+
+    id: int = Field(description="Telegram user identifier.")
+    is_bot: bool | None = Field(default=None, description="Whether the sender is a Telegram bot.")
+    first_name: str | None = Field(default=None, description="Sender first name, when Telegram includes it.")
+    last_name: str | None = Field(default=None, description="Sender last name, when Telegram includes it.")
+    username: str | None = Field(default=None, description="Sender Telegram username, when available.")
 
 
 class TelegramChat(BaseModel):
-    id: int
-    type: str
-    title: str | None = None
-    username: str | None = None
-    first_name: str | None = None
-    last_name: str | None = None
+    """Telegram chat metadata for the conversation that produced the update."""
+
+    id: int = Field(description="Telegram chat identifier.")
+    type: str = Field(description="Telegram chat type, such as private, group, supergroup, or channel.")
+    title: str | None = Field(default=None, description="Group, supergroup, or channel title, when available.")
+    username: str | None = Field(default=None, description="Chat username, when available.")
+    first_name: str | None = Field(default=None, description="Private chat first name, when available.")
+    last_name: str | None = Field(default=None, description="Private chat last name, when available.")
 
 
 class TelegramMessage(BaseModel):
-    message_id: int
-    date: int
-    chat: TelegramChat
-    from_: TelegramUser | None = Field(default=None, alias="from")
-    text: str | None = None
+    """Telegram message subset required by the backend ingestion skeleton."""
+
+    message_id: int = Field(description="Telegram message identifier inside the chat.")
+    date: int = Field(description="Telegram message Unix timestamp in seconds.")
+    chat: TelegramChat = Field(description="Chat that received or produced the message.")
+    from_: TelegramUser | None = Field(
+        default=None,
+        alias="from",
+        description="Telegram sender metadata. Uses alias because 'from' is reserved in Python.",
+    )
+    text: str | None = Field(default=None, description="Plain text message content, when the update contains text.")
 
 
 class TelegramWebhookUpdate(BaseModel):
-    update_id: int
-    message: TelegramMessage | None = None
+    """Top-level Telegram webhook update accepted by the ingestion endpoint."""
+
+    update_id: int = Field(description="Unique Telegram update identifier.")
+    message: TelegramMessage | None = Field(default=None, description="Telegram message payload, when the update contains a message.")
 
 
 class TelegramWebhookAccepted(BaseModel):
-    status: Literal["accepted"] = "accepted"
-    source: Literal["telegram"] = "telegram"
-    update_id: int
-    message_id: int | None = None
-    chat_id: int | None = None
-    has_text: bool = False
+    """Stable response returned after the backend accepts a Telegram webhook update."""
+
+    status: Literal["accepted"] = Field(default="accepted", description="Webhook acceptance status.")
+    source: Literal["telegram"] = Field(default="telegram", description="Webhook source platform.")
+    update_id: int = Field(description="Telegram update identifier that was accepted.")
+    message_id: int | None = Field(default=None, description="Telegram message identifier, when the update contains a message.")
+    chat_id: int | None = Field(default=None, description="Telegram chat identifier, when the update contains a message.")
+    has_text: bool = Field(default=False, description="Whether the accepted update contains text content.")

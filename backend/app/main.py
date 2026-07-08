@@ -6,6 +6,8 @@ from app.core.config import settings
 
 
 def create_app() -> FastAPI:
+    """Create and configure the FastAPI backend application."""
+
     app = FastAPI(title=settings.app_name)
     app.include_router(health_router)
     app.include_router(telegram_router)
@@ -13,3 +15,4 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+"""ASGI application instance used by Uvicorn and tests."""
