@@ -19,7 +19,7 @@ Goal: create the source documents and basic project structure.
 Goal: Setup FastAPI, PostgreSQL/PostGIS, and Next.js boilerplate via Docker Compose.
 - [x] BE-001: Create FastAPI backend skeleton with `/health`, `/ready`, tests, and Docker support.
 - [x] BE-002: Add PostgreSQL/PostGIS service, SQLAlchemy DB skeleton, and DB-backed readiness check.
-- [x] FE-001: Setup Next.js frontend skeleton with Docker support.
+- [ ] Setup Next.js skeleton.
 
 **Verification gate:**
 - [ ] `docker compose up` runs successfully and endpoints return 200 OK.
