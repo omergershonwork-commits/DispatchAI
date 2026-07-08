@@ -1,9 +1,27 @@
 services:
+  db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: ai_rescue
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ai_rescue"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   backend:
     build:
       context: ./backend
     ports:
       - "8000:8000"
     environment:
-      APP_NAME: DispatchAI
+      APP_NAME: ai-rescue-backend
       ENVIRONMENT: local
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/ai_rescue
+    depends_on:
+      db:
+        condition: service_healthy
