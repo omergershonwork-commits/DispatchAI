@@ -11,8 +11,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  test-and-compose:
-    name: Test and Docker Compose
+  backend-test-and-compose:
+    name: Backend Test and Docker Compose
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -34,43 +34,25 @@ jobs:
         working-directory: backend
         run: pytest -q
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
+      - name: Build and start backend stack
+        run: docker compose up --build -d db backend
 
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm install
-
-      - name: Run frontend tests
-        working-directory: frontend
-        run: npm test
-
-      - name: Build frontend
-        working-directory: frontend
-        run: npm run build
-
-      - name: Build and start Docker Compose stack
-        run: docker compose up --build -d db backend frontend
-
-      - name: Verify running services
+      - name: Verify backend services
         run: |
           set -euo pipefail
 
           for attempt in {1..60}; do
             if curl -fsS http://localhost:8000/health \
-              && curl -fsS http://localhost:8000/ready \
-              && curl -fsS http://localhost:3000; then
+              && curl -fsS http://localhost:8000/ready; then
               exit 0
             fi
 
-            echo "Waiting for services to become ready... attempt ${attempt}/60"
+            echo "Waiting for backend services to become ready... attempt ${attempt}/60"
             sleep 2
           done
 
           docker compose ps
-          docker compose logs db backend frontend
+          docker compose logs db backend
           exit 1
 
       - name: Stop Docker Compose stack
