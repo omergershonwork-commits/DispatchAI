@@ -27,7 +27,7 @@ Goal: Setup FastAPI, PostgreSQL/PostGIS, and Next.js boilerplate via Docker Comp
 ## Phase 2 — Chat Webhook & AI Pipeline
 Goal: Receive Telegram messages, process with Qwen LLM, and parse responses.
 - [x] BE-003: Create Telegram webhook ingestion skeleton.
-- [ ] Implement local LLM inference client (Qwen).
+- [x] BE-004: Implement local Qwen inference client skeleton.
 - [ ] Create prompt chains for extracting incident details.
 
 **Verification gate:**
