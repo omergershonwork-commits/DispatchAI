@@ -148,10 +148,7 @@ def build_telegram_reply_text(
         return extraction.follow_up_question
 
     if persistence_result:
-        if persistence_result.updated:
-            reply_lines = [f"Incident #{persistence_result.incident_id} updated."]
-        else:
-            reply_lines = [f"Incident #{persistence_result.incident_id} recorded."]
+        reply_lines = _build_persisted_reply_header(persistence_result)
     else:
         reply_lines = ["Incident report received."]
 
@@ -170,3 +167,11 @@ def build_telegram_reply_text(
         reply_lines.append("I will keep tracking this report while dispatch support is being prepared.")
 
     return "\n".join(reply_lines)
+
+
+def _build_persisted_reply_header(persistence_result: IncidentPersistenceResult) -> list[str]:
+    """Return the first reply line for a persisted incident."""
+
+    if persistence_result.updated:
+        return [f"Incident #{persistence_result.incident_id} updated."]
+    return [f"Incident #{persistence_result.incident_id} recorded."]
