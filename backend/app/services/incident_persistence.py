@@ -169,7 +169,10 @@ class IncidentPersistenceService:
             "missing_fields": list(extraction.missing_fields),
             "follow_up_question": extraction.follow_up_question,
         }
-        incident.status = READY_STATUS if extraction.should_create_incident or self._has_required_fields(incident) else PENDING_STATUS
+        if extraction.should_create_incident or self._has_required_fields(incident):
+            incident.status = READY_STATUS
+        else:
+            incident.status = PENDING_STATUS
 
     def _status_from_extraction(self, extraction: IncidentExtractionResult) -> str:
         """Return the incident status implied by extraction completeness."""
