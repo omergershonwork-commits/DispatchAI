@@ -2,6 +2,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.schemas.incident import IncidentExtractionResult
+
 
 class TelegramUser(BaseModel):
     """Telegram user metadata included on inbound webhook messages."""
@@ -54,3 +56,5 @@ class TelegramWebhookAccepted(BaseModel):
     message_id: int | None = Field(default=None, description="Telegram message identifier, when the update contains a message.")
     chat_id: int | None = Field(default=None, description="Telegram chat identifier, when the update contains a message.")
     has_text: bool = Field(default=False, description="Whether the accepted update contains text content.")
+    extraction: IncidentExtractionResult | None = Field(default=None, description="Incident extraction result for text messages, when extraction succeeds.")
+    extraction_error: str | None = Field(default=None, description="Safe extraction error code when extraction fails after webhook acceptance.")
