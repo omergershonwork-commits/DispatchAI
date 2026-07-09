@@ -6,7 +6,8 @@ The backend can accept Telegram webhook messages, persist incident reports, and 
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `TELEGRAM_BOT_TOKEN` | empty | BotFather token used to send replies. Must not be committed. |
+| `TELEGRAM_INCIDENT_BOT_TOKEN` | `TELEGRAM_BOT_TOKEN` | Incident-report bot token used by `/webhooks/telegram`. |
+| `TELEGRAM_BOT_TOKEN` | empty | Legacy fallback for the incident bot token. |
 | `TELEGRAM_API_BASE_URL` | `https://api.telegram.org` | Telegram Bot API base URL. |
 | `TELEGRAM_TIMEOUT_SECONDS` | `10` | HTTP timeout for Telegram send-message calls. |
 
@@ -24,7 +25,7 @@ $env:QWEN_REQUEST_HEADERS_MODE = "auto"
 $env:QWEN_EXTRA_HEADERS_JSON = ""
 
 $env:DATABASE_URL = "postgresql+psycopg://postgres:postgres@localhost:5432/ai_rescue"
-$env:TELEGRAM_BOT_TOKEN = "PASTE_TOKEN_HERE"
+$env:TELEGRAM_INCIDENT_BOT_TOKEN = "PASTE_INCIDENT_BOT_TOKEN_HERE"
 $env:TELEGRAM_TIMEOUT_SECONDS = "10"
 
 python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
@@ -49,7 +50,7 @@ $body = @{
 } | ConvertTo-Json -Depth 10
 
 Invoke-RestMethod `
-  -Uri "https://api.telegram.org/bot$($env:TELEGRAM_BOT_TOKEN)/setWebhook" `
+  -Uri "https://api.telegram.org/bot$($env:TELEGRAM_INCIDENT_BOT_TOKEN)/setWebhook" `
   -Method POST `
   -ContentType "application/json" `
   -Body $body
@@ -59,7 +60,7 @@ Check the webhook status:
 
 ```powershell
 Invoke-RestMethod `
-  -Uri "https://api.telegram.org/bot$($env:TELEGRAM_BOT_TOKEN)/getWebhookInfo" `
+  -Uri "https://api.telegram.org/bot$($env:TELEGRAM_INCIDENT_BOT_TOKEN)/getWebhookInfo" `
   -Method GET
 ```
 
@@ -117,4 +118,4 @@ limit 5;
 
 ## Safety and secrets
 
-Do not commit the Telegram bot token. Keep it in environment variables only.
+Do not commit Telegram bot tokens. Keep them in environment variables only.
