@@ -395,7 +395,13 @@ def test_telegram_webhook_accepts_when_extraction_fails_and_sends_safe_reply() -
     assert response.json()["telegram_reply_error"] is None
     assert fake_service.last_message_text == "I need medical help near Dizengoff Center"
     assert fake_persistence.calls == []
-    assert fake_bot_client.sent_messages == [
+    assert fake_bot_client.sent_messages == _expected_extraction_failure_bot_messages()
+
+
+def _expected_extraction_failure_bot_messages() -> list[tuple[int, str]]:
+    """Return the expected Telegram bot reply for extraction failure."""
+
+    return [
         (
             987654321,
             "I received your message, but I could not extract the incident details yet. "
@@ -430,7 +436,13 @@ def test_telegram_webhook_accepts_when_persistence_fails_and_sends_safe_reply() 
     assert response.json()["telegram_reply_sent"] is True
     assert response.json()["telegram_reply_error"] is None
     assert len(fake_persistence.calls) == 1
-    assert fake_bot_client.sent_messages == [
+    assert fake_bot_client.sent_messages == _expected_persistence_failure_bot_messages()
+
+
+def _expected_persistence_failure_bot_messages() -> list[tuple[int, str]]:
+    """Return the expected Telegram bot reply for persistence failure."""
+
+    return [
         (
             987654321,
             "Incident report received, but I could not save it yet. "
