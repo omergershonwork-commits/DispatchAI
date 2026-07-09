@@ -10,9 +10,12 @@ from app.api.telegram import (
 )
 from app.main import app
 from app.schemas.incident import IncidentExtractionResult
-from app.schemas.telegram import TelegramWebhookUpdate
 from app.services.incident_extraction import IncidentExtractionError
-from app.services.incident_persistence import IncidentPersistenceError, IncidentPersistenceResult
+from app.services.incident_persistence import (
+    IncidentPersistenceError,
+    IncidentPersistenceResult,
+    SourceIncidentContext,
+)
 from app.services.telegram_bot_client import TelegramBotClientError
 
 client = TestClient(app)
@@ -60,17 +63,16 @@ class FakeIncidentPersistenceService:
 
         self.result = result
         self.error = error
-        self.calls: list[tuple[TelegramWebhookUpdate, IncidentExtractionResult | None, str]] = []
+        self.calls: list[tuple[SourceIncidentContext, IncidentExtractionResult | None]] = []
 
-    def persist_from_telegram(
+    def persist_incident(
         self,
-        update: TelegramWebhookUpdate,
+        source_context: SourceIncidentContext,
         extraction: IncidentExtractionResult | None,
-        raw_text: str,
     ) -> IncidentPersistenceResult | None:
         """Record a persistence call and return or raise the configured outcome."""
 
-        self.calls.append((update, extraction, raw_text))
+        self.calls.append((source_context, extraction))
         if self.error:
             raise self.error
         return self.result
@@ -224,7 +226,14 @@ def test_telegram_webhook_accepts_text_message_extracts_persists_and_replies() -
     assert response.json() == _expected_actionable_webhook_response()
     assert fake_service.last_message_text == "I need medical help near Dizengoff Center"
     assert len(fake_persistence.calls) == 1
-    assert fake_persistence.calls[0][2] == "I need medical help near Dizengoff Center"
+    assert fake_persistence.calls[0][0] == SourceIncidentContext(
+        source="telegram",
+        source_update_id=123456,
+        source_message_id=42,
+        source_chat_id=987654321,
+        raw_text="I need medical help near Dizengoff Center",
+    )
+    assert fake_persistence.calls[0][1] == actionable_extraction_result()
     assert fake_bot_client.sent_messages == _expected_actionable_bot_messages()
 
 
