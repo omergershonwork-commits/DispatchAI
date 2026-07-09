@@ -369,7 +369,7 @@ def test_telegram_webhook_accepts_non_text_message_without_processing() -> None:
     assert fake_bot_client.sent_messages == []
 
 
-def test_telegram_webhook_accepts_when_extraction_fails_and_sends_safe_reply() -> None:
+def test_telegram_webhook_accepts_when_extraction_fails() -> None:
     """Verify extraction failure does not make Telegram retry and still sends a reply."""
 
     fake_service = FakeIncidentExtractionService(error=IncidentExtractionError("bad model output"))
