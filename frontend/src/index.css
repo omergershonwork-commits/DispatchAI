@@ -1,0 +1,50 @@
+:root {
+  /* Color Palette - Dark Matter / Neon */
+  --bg-dark: #121212; /* Deep dark to match the map's water/background */
+  --bg-panel: #1a1b1e; /* Slightly lighter for sidebars and panels */
+  --bg-card: #25262b; /* Slightly lighter for cards inside panels */
+  
+  --text-primary: #f8fafc;
+  --text-secondary: #9ca3af;
+  
+  --neon-cyan: #06b6d4; /* Main UI Accents & Branding */
+  --neon-green: #22c55e; /* Available Volunteers / Success */
+  --neon-orange: #f97316; /* High Severity Emergencies */
+  --neon-red: #ef4444; /* Critical Emergencies */
+  --neon-yellow: #eab308; /* Medium Severity */
+  
+  --border-color: #2c2e33;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--bg-dark);
+  color: var(--text-primary);
+  overflow: hidden; /* Prevents the whole page from scrolling, we only want specific panels to scroll */
+}
+
+/* Custom Scrollbar for a premium look */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-dark);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--neon-cyan);
+}
