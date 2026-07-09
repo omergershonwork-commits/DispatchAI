@@ -10,7 +10,6 @@ from app.models.incident import (
     Incident,
 )
 from app.schemas.incident import IncidentExtractionResult
-from app.schemas.telegram import TelegramWebhookUpdate
 
 PENDING_STATUS = INCIDENT_STATUS_PENDING_DETAILS
 READY_STATUS = INCIDENT_STATUS_READY_FOR_DISPATCH
@@ -18,6 +17,26 @@ READY_STATUS = INCIDENT_STATUS_READY_FOR_DISPATCH
 
 class IncidentPersistenceError(RuntimeError):
     """Raised when incident persistence fails after webhook acceptance."""
+
+
+@dataclass(frozen=True)
+class SourceIncidentContext:
+    """Source-agnostic metadata for an inbound incident report."""
+
+    source: str
+    """Inbound source name, such as telegram, whatsapp, sms, or web."""
+
+    source_update_id: int | None
+    """Source-specific update identifier, when available."""
+
+    source_message_id: int | None
+    """Source-specific message identifier, when available."""
+
+    source_chat_id: int
+    """Source conversation identifier used to find pending incident drafts."""
+
+    raw_text: str
+    """Raw user text that produced the extraction result."""
 
 
 @dataclass(frozen=True)
@@ -38,37 +57,39 @@ class IncidentPersistenceResult:
 
 
 class IncidentPersistenceService:
-    """Persist Telegram incident extractions into the database."""
+    """Persist source-agnostic incident extractions into the database."""
 
     def __init__(self, db: Session) -> None:
         """Create a persistence service bound to one SQLAlchemy session."""
 
         self.db = db
 
-    def persist_from_telegram(
+    def persist_incident(
         self,
-        update: TelegramWebhookUpdate,
+        source_context: SourceIncidentContext,
         extraction: IncidentExtractionResult | None,
-        raw_text: str,
     ) -> IncidentPersistenceResult | None:
-        """Create or update an incident from a Telegram extraction result."""
+        """Create or update an incident from source metadata and extraction output."""
 
-        if not update.message or extraction is None or not extraction.is_incident:
+        if extraction is None or not extraction.is_incident:
             return None
         if not extraction.should_create_incident and not extraction.should_ask_follow_up:
             return None
 
         try:
             self._ensure_schema()
-            pending_incident = self._find_pending_incident(update.message.chat.id)
+            pending_incident = self._find_pending_incident(
+                source_context.source,
+                source_context.source_chat_id,
+            )
 
             if pending_incident is not None:
                 incident = pending_incident
-                self._merge_extraction_into_incident(incident, update, extraction, raw_text)
+                self._merge_extraction_into_incident(incident, source_context, extraction)
                 created = False
                 updated = True
             else:
-                incident = self._build_incident(update, extraction, raw_text)
+                incident = self._build_incident(source_context, extraction)
                 self.db.add(incident)
                 created = True
                 updated = False
@@ -91,14 +112,14 @@ class IncidentPersistenceService:
 
         Base.metadata.create_all(bind=self.db.get_bind())
 
-    def _find_pending_incident(self, chat_id: int) -> Incident | None:
-        """Return the latest pending incident for a Telegram chat, when one exists."""
+    def _find_pending_incident(self, source: str, source_chat_id: int) -> Incident | None:
+        """Return the latest pending incident for a source conversation."""
 
         return (
             self.db.query(Incident)
             .filter(
-                Incident.source == "telegram",
-                Incident.source_chat_id == chat_id,
+                Incident.source == source,
+                Incident.source_chat_id == source_chat_id,
                 Incident.status == PENDING_STATUS,
             )
             .order_by(Incident.created_at.desc(), Incident.id.desc())
@@ -107,23 +128,18 @@ class IncidentPersistenceService:
 
     def _build_incident(
         self,
-        update: TelegramWebhookUpdate,
+        source_context: SourceIncidentContext,
         extraction: IncidentExtractionResult,
-        raw_text: str,
     ) -> Incident:
-        """Build a new incident ORM object from a Telegram extraction."""
-
-        message = update.message
-        if message is None:
-            raise ValueError("Telegram message is required to build an incident.")
+        """Build a new incident ORM object from source metadata and extraction."""
 
         status = self._status_from_extraction(extraction)
         return Incident(
-            source="telegram",
-            source_update_id=update.update_id,
-            source_message_id=message.message_id,
-            source_chat_id=message.chat.id,
-            raw_text=raw_text,
+            source=source_context.source,
+            source_update_id=source_context.source_update_id,
+            source_message_id=source_context.source_message_id,
+            source_chat_id=source_context.source_chat_id,
+            raw_text=source_context.raw_text,
             summary=extraction.summary,
             incident_type=extraction.incident_type,
             location_text=extraction.location_text,
@@ -143,19 +159,14 @@ class IncidentPersistenceService:
     def _merge_extraction_into_incident(
         self,
         incident: Incident,
-        update: TelegramWebhookUpdate,
+        source_context: SourceIncidentContext,
         extraction: IncidentExtractionResult,
-        raw_text: str,
     ) -> None:
         """Merge a follow-up extraction into an existing pending incident."""
 
-        message = update.message
-        if message is None:
-            raise ValueError("Telegram message is required to update an incident.")
-
-        incident.source_update_id = update.update_id
-        incident.source_message_id = message.message_id
-        incident.raw_text = f"{incident.raw_text}\n\n--- follow-up ---\n{raw_text}"
+        incident.source_update_id = source_context.source_update_id
+        incident.source_message_id = source_context.source_message_id
+        incident.raw_text = f"{incident.raw_text}\n\n--- follow-up ---\n{source_context.raw_text}"
         incident.summary = self._choose_text(extraction.summary, incident.summary) or incident.summary
         incident.incident_type = self._choose_text(extraction.incident_type, incident.incident_type)
         incident.location_text = self._choose_text(extraction.location_text, incident.location_text)
