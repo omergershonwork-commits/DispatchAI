@@ -313,7 +313,13 @@ def test_telegram_webhook_accepts_update_without_message() -> None:
     response = client.post("/webhooks/telegram", json={"update_id": 123457})
 
     assert response.status_code == 202
-    assert response.json() == {
+    assert response.json() == _expected_non_message_webhook_response()
+
+
+def _expected_non_message_webhook_response() -> dict:
+    """Return the full webhook response expected for a non-message update."""
+
+    return {
         "status": "accepted",
         "source": "telegram",
         "update_id": 123457,
