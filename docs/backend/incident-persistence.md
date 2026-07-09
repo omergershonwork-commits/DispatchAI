@@ -1,6 +1,20 @@
 # Incident persistence
 
-The Telegram webhook can persist extracted incident reports into the database.
+The backend can persist extracted incident reports from any inbound source that can provide source metadata and raw text.
+
+## Source adapter boundary
+
+Persistence is source-agnostic. Source-specific webhook code, such as Telegram, translates an inbound event into `SourceIncidentContext` before calling the persistence service.
+
+`SourceIncidentContext` contains:
+
+- `source`
+- `source_update_id`
+- `source_message_id`
+- `source_chat_id`
+- `raw_text`
+
+This keeps future sources, such as WhatsApp, SMS, web forms, or voice transcripts, outside the persistence service. Each source should add its own adapter and reuse the same persistence contract.
 
 ## Table
 
@@ -42,12 +56,13 @@ Stored fields include:
 For a Telegram text message:
 
 1. Run incident extraction.
-2. If extraction is actionable, create an incident with `ready_for_dispatch`.
-3. If extraction needs more details, create a pending incident with `pending_details`.
-4. If the same Telegram chat has a pending incident, merge the new extraction into that incident.
-5. If the pending incident becomes complete, move it to `ready_for_dispatch`.
-6. Send a Telegram reply.
-7. Always return `202 Accepted` to Telegram unless the request shape is invalid.
+2. Build generic `SourceIncidentContext` from the Telegram update.
+3. If extraction is actionable, create an incident with `ready_for_dispatch`.
+4. If extraction needs more details, create a pending incident with `pending_details`.
+5. If the same source conversation has a pending incident, merge the new extraction into that incident.
+6. If the pending incident becomes complete, move it to `ready_for_dispatch`.
+7. Send a Telegram reply.
+8. Always return `202 Accepted` to Telegram unless the request shape is invalid.
 
 ## Webhook response metadata
 
