@@ -1,6 +1,6 @@
 # Telegram bot replies
 
-The backend can accept Telegram webhook messages and send plain-text replies with the Telegram Bot API.
+The backend can accept Telegram webhook messages, persist incident reports, and send plain-text replies with the Telegram Bot API.
 
 ## Runtime variables
 
@@ -12,7 +12,7 @@ The backend can accept Telegram webhook messages and send plain-text replies wit
 
 ## Local setup
 
-Start the backend with both Qwen and Telegram variables set:
+Start the backend with Qwen, Telegram, and database variables set:
 
 ```powershell
 cd D:\Projects\DispatchAI\DispatchAI\backend
@@ -23,6 +23,7 @@ $env:QWEN_TIMEOUT_SECONDS = "60"
 $env:QWEN_REQUEST_HEADERS_MODE = "auto"
 $env:QWEN_EXTRA_HEADERS_JSON = ""
 
+$env:DATABASE_URL = "postgresql+psycopg://postgres:postgres@localhost:5432/ai_rescue"
 $env:TELEGRAM_BOT_TOKEN = "PASTE_TOKEN_HERE"
 $env:TELEGRAM_TIMEOUT_SECONDS = "10"
 
@@ -64,16 +65,21 @@ Invoke-RestMethod `
 
 ## Reply behavior
 
-For text messages, the webhook now attempts to send a Telegram reply after extraction.
+For text messages, the webhook now attempts extraction, persistence, and Telegram reply sending.
 
-- If extraction succeeds and the incident is actionable, the bot replies with a short incident summary.
-- If extraction succeeds but needs more details, the bot replies with the follow-up question.
+- If extraction succeeds and the incident is actionable, the bot replies with the persisted incident id and a short incident summary.
+- If extraction succeeds but needs more details, the bot persists/updates a pending incident and replies with the follow-up question.
 - If extraction fails, the bot replies with a safe clarification request.
+- If persistence fails, the bot replies with a safe resend request.
 - If Telegram reply sending fails, the webhook still returns `202 Accepted` so Telegram does not retry indefinitely.
 
 The webhook response includes:
 
 ```text
+incident_id
+incident_created
+incident_status
+persistence_error
 telegram_reply_sent
 telegram_reply_error
 ```
@@ -95,7 +101,18 @@ POST /webhooks/telegram 202 Accepted
 Expected Telegram behavior:
 
 ```text
-The bot sends a short incident summary, a follow-up question, or a safe clarification reply.
+Incident #<id> recorded.
+...
+This report is ready for dispatch matching.
+```
+
+Expected database check:
+
+```sql
+select id, source_chat_id, status, summary, location_text, needs
+from incidents
+order by id desc
+limit 5;
 ```
 
 ## Safety and secrets
