@@ -74,7 +74,8 @@ def test_telegram_bot_client_raises_clear_error_on_timeout() -> None:
 
         raise httpx.ReadTimeout("request timed out", request=request)
 
-    client = TelegramBotClient(bot_token="test-token", http_client=httpx.Client(transport=httpx.MockTransport(handler)))
+    http_client = httpx.Client(transport=httpx.MockTransport(handler))
+    client = TelegramBotClient(bot_token="test-token", http_client=http_client)
 
     with pytest.raises(TelegramBotClientError, match="timed out"):
         client.send_message(987654321, "Incident report received.")
@@ -88,7 +89,8 @@ def test_telegram_bot_client_raises_clear_error_on_non_200_response() -> None:
 
         return httpx.Response(401, json={"ok": False, "description": "Unauthorized"}, request=request)
 
-    client = TelegramBotClient(bot_token="test-token", http_client=httpx.Client(transport=httpx.MockTransport(handler)))
+    http_client = httpx.Client(transport=httpx.MockTransport(handler))
+    client = TelegramBotClient(bot_token="test-token", http_client=http_client)
 
     with pytest.raises(TelegramBotClientError, match="HTTP 401"):
         client.send_message(987654321, "Incident report received.")
@@ -102,7 +104,8 @@ def test_telegram_bot_client_raises_clear_error_when_response_not_ok() -> None:
 
         return httpx.Response(200, json={"ok": False, "description": "chat not found"}, request=request)
 
-    client = TelegramBotClient(bot_token="test-token", http_client=httpx.Client(transport=httpx.MockTransport(handler)))
+    http_client = httpx.Client(transport=httpx.MockTransport(handler))
+    client = TelegramBotClient(bot_token="test-token", http_client=http_client)
 
     with pytest.raises(TelegramBotClientError, match="not ok"):
         client.send_message(987654321, "Incident report received.")
