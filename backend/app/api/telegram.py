@@ -11,6 +11,7 @@ from app.services.incident_persistence import (
     IncidentPersistenceError,
     IncidentPersistenceResult,
     IncidentPersistenceService,
+    SourceIncidentContext,
 )
 from app.services.qwen_client import QwenClientError
 from app.services.telegram_bot_client import TelegramBotClient, TelegramBotClientError
@@ -36,15 +37,14 @@ class TelegramReplySender(Protocol):
 
 
 class IncidentPersister(Protocol):
-    """Protocol for objects that persist Telegram incident extractions."""
+    """Protocol for objects that persist source-agnostic incident extractions."""
 
-    def persist_from_telegram(
+    def persist_incident(
         self,
-        update: TelegramWebhookUpdate,
+        source_context: SourceIncidentContext,
         extraction: IncidentExtractionResult | None,
-        raw_text: str,
     ) -> IncidentPersistenceResult | None:
-        """Create or update an incident from a Telegram extraction."""
+        """Create or update an incident from source metadata and extraction."""
 
 
 def get_incident_extraction_service() -> IncidentExtractionService:
@@ -54,7 +54,7 @@ def get_incident_extraction_service() -> IncidentExtractionService:
 
 
 def get_incident_persistence_service(db: Session = Depends(get_db)) -> IncidentPersistenceService:
-    """Return the incident persistence service used by Telegram webhook ingestion."""
+    """Return the incident persistence service used by webhook ingestion."""
 
     return IncidentPersistenceService(db)
 
@@ -93,6 +93,7 @@ def receive_telegram_webhook(
     telegram_reply_error: str | None = None
 
     if message and message.text and message.text.strip():
+        source_context = build_telegram_source_context(update)
         try:
             extraction = extraction_service.extract_from_text(message.text)
         except (IncidentExtractionError, QwenClientError, ValueError):
@@ -100,10 +101,9 @@ def receive_telegram_webhook(
 
         if extraction is not None:
             try:
-                persistence_result = incident_persistence_service.persist_from_telegram(
-                    update,
+                persistence_result = incident_persistence_service.persist_incident(
+                    source_context,
                     extraction,
-                    message.text,
                 )
             except (IncidentPersistenceError, ValueError):
                 persistence_error = INCIDENT_PERSISTENCE_UNAVAILABLE_ERROR
@@ -133,6 +133,22 @@ def receive_telegram_webhook(
         persistence_error=persistence_error,
         telegram_reply_sent=telegram_reply_sent,
         telegram_reply_error=telegram_reply_error,
+    )
+
+
+def build_telegram_source_context(update: TelegramWebhookUpdate) -> SourceIncidentContext:
+    """Translate a Telegram webhook update into generic incident source metadata."""
+
+    message = update.message
+    if message is None or message.text is None:
+        raise ValueError("Telegram text message is required to build source context.")
+
+    return SourceIncidentContext(
+        source="telegram",
+        source_update_id=update.update_id,
+        source_message_id=message.message_id,
+        source_chat_id=message.chat.id,
+        raw_text=message.text,
     )
 
 
