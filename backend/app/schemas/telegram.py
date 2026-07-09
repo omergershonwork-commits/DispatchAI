@@ -58,3 +58,5 @@ class TelegramWebhookAccepted(BaseModel):
     has_text: bool = Field(default=False, description="Whether the accepted update contains text content.")
     extraction: IncidentExtractionResult | None = Field(default=None, description="Incident extraction result for text messages, when extraction succeeds.")
     extraction_error: str | None = Field(default=None, description="Safe extraction error code when extraction fails after webhook acceptance.")
+    telegram_reply_sent: bool = Field(default=False, description="Whether a Telegram reply was sent for this webhook.")
+    telegram_reply_error: str | None = Field(default=None, description="Safe Telegram reply error code when replying fails after webhook acceptance.")

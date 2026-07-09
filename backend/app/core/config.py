@@ -28,6 +28,15 @@ QWEN_REQUEST_HEADERS_MODE = os.getenv("QWEN_REQUEST_HEADERS_MODE", "auto")
 QWEN_EXTRA_HEADERS_JSON = os.getenv("QWEN_EXTRA_HEADERS_JSON", "")
 """Optional JSON object of additional headers for Qwen requests."""
 
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+"""Telegram bot token used for sending replies. Must not be committed."""
+
+TELEGRAM_API_BASE_URL = os.getenv("TELEGRAM_API_BASE_URL", "https://api.telegram.org")
+"""Base URL for the Telegram Bot API."""
+
+TELEGRAM_TIMEOUT_SECONDS = float(os.getenv("TELEGRAM_TIMEOUT_SECONDS", "10"))
+"""HTTP timeout in seconds for Telegram Bot API requests."""
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -46,6 +55,18 @@ class Settings:
     qwen_extra_headers_json: str = field(
         default=QWEN_EXTRA_HEADERS_JSON,
         metadata={"description": "Optional JSON object of extra Qwen request headers."},
+    )
+    telegram_bot_token: str = field(
+        default=TELEGRAM_BOT_TOKEN,
+        metadata={"description": "Telegram bot token used for sending replies."},
+    )
+    telegram_api_base_url: str = field(
+        default=TELEGRAM_API_BASE_URL,
+        metadata={"description": "Telegram Bot API base URL."},
+    )
+    telegram_timeout_seconds: float = field(
+        default=TELEGRAM_TIMEOUT_SECONDS,
+        metadata={"description": "Telegram Bot API timeout in seconds."},
     )
 
 
