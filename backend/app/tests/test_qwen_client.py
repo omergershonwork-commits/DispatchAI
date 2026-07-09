@@ -64,6 +64,100 @@ def test_qwen_client_sends_expected_request_shape() -> None:
     assert response.raw_response["choices"][0]["message"]["content"] == "ok"
 
 
+def test_qwen_client_skips_default_headers_for_local_auto_mode() -> None:
+    """Verify auto mode sends no tunnel headers to local Qwen endpoints."""
+
+    captured_headers: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        """Capture headers sent to a local Qwen endpoint."""
+
+        captured_headers["headers"] = request.headers
+        return httpx.Response(200, json=successful_qwen_response("ok"))
+
+    http_client = httpx.Client(transport=httpx.MockTransport(handler))
+    client = QwenClient(
+        base_url="http://127.0.0.1:11434",
+        model_name="qwen-test",
+        timeout_seconds=5,
+        headers_mode="auto",
+        http_client=http_client,
+    )
+
+    client.generate("Extract the incident details.")
+
+    assert "X-Pinggy-No-Screen" not in captured_headers["headers"]
+
+
+def test_qwen_client_adds_pinggy_headers_for_remote_auto_mode() -> None:
+    """Verify auto mode sends Pinggy bypass headers to remote Qwen endpoints."""
+
+    captured_headers: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        """Capture headers sent to a remote Qwen endpoint."""
+
+        captured_headers["headers"] = request.headers
+        return httpx.Response(200, json=successful_qwen_response("ok"))
+
+    http_client = httpx.Client(transport=httpx.MockTransport(handler))
+    client = QwenClient(
+        base_url="https://qwen-remote.example",
+        model_name="qwen-test",
+        timeout_seconds=5,
+        headers_mode="auto",
+        http_client=http_client,
+    )
+
+    client.generate("Extract the incident details.")
+
+    assert captured_headers["headers"]["X-Pinggy-No-Screen"] == "true"
+    assert captured_headers["headers"]["User-Agent"] == "DispatchAI-dev-test"
+    assert captured_headers["headers"]["Accept"] == "application/json"
+
+
+def test_qwen_client_extra_headers_override_defaults() -> None:
+    """Verify explicit extra headers can override default remote headers."""
+
+    captured_headers: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        """Capture headers sent after extra-header merging."""
+
+        captured_headers["headers"] = request.headers
+        return httpx.Response(200, json=successful_qwen_response("ok"))
+
+    http_client = httpx.Client(transport=httpx.MockTransport(handler))
+    client = QwenClient(
+        base_url="https://qwen-remote.example",
+        model_name="qwen-test",
+        timeout_seconds=5,
+        headers_mode="auto",
+        extra_headers_json=json.dumps({"User-Agent": "Custom-Agent", "X-Test": "yes"}),
+        http_client=http_client,
+    )
+
+    client.generate("Extract the incident details.")
+
+    assert captured_headers["headers"]["User-Agent"] == "Custom-Agent"
+    assert captured_headers["headers"]["X-Test"] == "yes"
+    assert captured_headers["headers"]["X-Pinggy-No-Screen"] == "true"
+
+
+def test_qwen_client_rejects_invalid_extra_headers_json() -> None:
+    """Verify invalid extra header configuration fails clearly."""
+
+    with pytest.raises(QwenClientError, match="QWEN_EXTRA_HEADERS_JSON"):
+        QwenClient(extra_headers_json="not-json")
+
+
+def test_qwen_client_rejects_invalid_headers_mode() -> None:
+    """Verify unsupported header mode configuration fails clearly."""
+
+    with pytest.raises(QwenClientError, match="QWEN_REQUEST_HEADERS_MODE"):
+        QwenClient(headers_mode="always")
+
+
 def test_qwen_client_rejects_empty_prompt() -> None:
     """Verify Qwen client fails fast when a prompt is empty."""
 
