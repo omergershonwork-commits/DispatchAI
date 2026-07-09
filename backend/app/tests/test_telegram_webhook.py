@@ -456,7 +456,9 @@ def test_telegram_webhook_accepts_when_reply_sending_fails() -> None:
 
     fake_service = FakeIncidentExtractionService(result=actionable_extraction_result())
     fake_persistence = FakeIncidentPersistenceService(result=persisted_incident_result())
-    fake_bot_client = FakeTelegramBotClient(error=TelegramBotClientError("telegram unavailable"))
+    fake_bot_client = FakeTelegramBotClient(
+        error=TelegramBotClientError("telegram unavailable")
+    )
     override_extraction_service(fake_service)
     override_persistence_service(fake_persistence)
     override_telegram_bot_client(fake_bot_client)
