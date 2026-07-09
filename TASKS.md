@@ -29,6 +29,7 @@ Goal: Receive Telegram messages, process with Qwen LLM, and parse responses.
 - [x] BE-003: Create Telegram webhook ingestion skeleton.
 - [x] BE-004: Implement local Qwen inference client skeleton.
 - [x] BE-005: Create prompt chains for extracting incident details.
+- [x] BE-006: Add extraction decision and follow-up support.
 
 **Verification gate:**
 - [ ] Send a mock Telegram webhook payload and verify the LLM extracts the correct JSON representation of an incident.
