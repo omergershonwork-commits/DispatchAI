@@ -410,7 +410,7 @@ def _expected_extraction_failure_bot_messages() -> list[tuple[int, str]]:
     ]
 
 
-def test_telegram_webhook_accepts_when_persistence_fails_and_sends_safe_reply() -> None:
+def test_telegram_webhook_accepts_when_persistence_fails() -> None:
     """Verify persistence failure does not make Telegram retry the webhook."""
 
     fake_service = FakeIncidentExtractionService(result=actionable_extraction_result())
