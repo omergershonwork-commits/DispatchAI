@@ -9,8 +9,7 @@ from app.models.incident import (
     Incident,
 )
 from app.schemas.incident import IncidentExtractionResult
-from app.schemas.telegram import TelegramWebhookUpdate
-from app.services.incident_persistence import IncidentPersistenceService
+from app.services.incident_persistence import IncidentPersistenceService, SourceIncidentContext
 
 
 @pytest.fixture
@@ -27,34 +26,21 @@ def db_session() -> Session:
         session.close()
 
 
-def telegram_update(
+def source_context(
+    source: str = "telegram",
     update_id: int = 123456,
     message_id: int = 42,
     chat_id: int = 987654321,
-    text: str = "I need medical help near Dizengoff Center",
-) -> TelegramWebhookUpdate:
-    """Return a validated Telegram webhook update for persistence tests."""
+    raw_text: str = "I need medical help near Dizengoff Center",
+) -> SourceIncidentContext:
+    """Return generic source metadata for persistence tests."""
 
-    return TelegramWebhookUpdate.model_validate(
-        {
-            "update_id": update_id,
-            "message": {
-                "message_id": message_id,
-                "date": 1_725_000_000,
-                "chat": {
-                    "id": chat_id,
-                    "type": "private",
-                    "first_name": "Omer",
-                },
-                "from": {
-                    "id": 111222333,
-                    "is_bot": False,
-                    "first_name": "Omer",
-                    "username": "omer_user",
-                },
-                "text": text,
-            },
-        }
+    return SourceIncidentContext(
+        source=source,
+        source_update_id=update_id,
+        source_message_id=message_id,
+        source_chat_id=chat_id,
+        raw_text=raw_text,
     )
 
 
@@ -124,15 +110,14 @@ def non_incident_extraction_result() -> IncidentExtractionResult:
     )
 
 
-def test_persist_from_telegram_creates_ready_incident(db_session: Session) -> None:
+def test_persist_incident_creates_ready_incident(db_session: Session) -> None:
     """Verify actionable extraction creates a ready incident row."""
 
     service = IncidentPersistenceService(db_session)
 
-    result = service.persist_from_telegram(
-        telegram_update(),
+    result = service.persist_incident(
+        source_context(),
         actionable_extraction_result(),
-        "I need medical help near Dizengoff Center",
     )
 
     assert result is not None
@@ -151,15 +136,14 @@ def test_persist_from_telegram_creates_ready_incident(db_session: Session) -> No
     assert incident.needs == ["medical help"]
 
 
-def test_persist_from_telegram_creates_pending_incident(db_session: Session) -> None:
+def test_persist_incident_creates_pending_incident(db_session: Session) -> None:
     """Verify incomplete extraction creates a pending incident row."""
 
     service = IncidentPersistenceService(db_session)
 
-    result = service.persist_from_telegram(
-        telegram_update(),
+    result = service.persist_incident(
+        source_context(raw_text="I need medical help"),
         pending_extraction_result(),
-        "I need medical help",
     )
 
     assert result is not None
@@ -174,24 +158,22 @@ def test_persist_from_telegram_creates_pending_incident(db_session: Session) -> 
     assert incident.metadata_json["follow_up_question"] == "Where exactly is help needed?"
 
 
-def test_persist_from_telegram_updates_existing_pending_incident(db_session: Session) -> None:
-    """Verify follow-up details from the same chat update the pending incident."""
+def test_persist_incident_updates_existing_pending_incident(db_session: Session) -> None:
+    """Verify follow-up details from the same source chat update the pending incident."""
 
     service = IncidentPersistenceService(db_session)
-    first_result = service.persist_from_telegram(
-        telegram_update(text="I need medical help"),
+    first_result = service.persist_incident(
+        source_context(raw_text="I need medical help"),
         pending_extraction_result(),
-        "I need medical help",
     )
 
-    second_result = service.persist_from_telegram(
-        telegram_update(
+    second_result = service.persist_incident(
+        source_context(
             update_id=123457,
             message_id=43,
-            text="The location is Dizengoff Center",
+            raw_text="The location is Dizengoff Center",
         ),
         actionable_extraction_result(),
-        "The location is Dizengoff Center",
     )
 
     assert first_result is not None
@@ -209,30 +191,47 @@ def test_persist_from_telegram_updates_existing_pending_incident(db_session: Ses
     assert "--- follow-up ---" in incident.raw_text
 
 
-def test_persist_from_telegram_does_not_create_for_non_incident(db_session: Session) -> None:
+def test_persist_incident_keeps_pending_incidents_separate_by_source(db_session: Session) -> None:
+    """Verify pending lookups are scoped by source and conversation id."""
+
+    service = IncidentPersistenceService(db_session)
+    telegram_result = service.persist_incident(
+        source_context(source="telegram", raw_text="I need medical help"),
+        pending_extraction_result(),
+    )
+    whatsapp_result = service.persist_incident(
+        source_context(source="whatsapp", raw_text="I need medical help"),
+        pending_extraction_result(),
+    )
+
+    assert telegram_result is not None
+    assert whatsapp_result is not None
+    assert telegram_result.incident_id != whatsapp_result.incident_id
+    assert db_session.query(Incident).count() == 2
+
+
+def test_persist_incident_does_not_create_for_non_incident(db_session: Session) -> None:
     """Verify non-incident extractions are not persisted."""
 
     service = IncidentPersistenceService(db_session)
 
-    result = service.persist_from_telegram(
-        telegram_update(text="hello"),
+    result = service.persist_incident(
+        source_context(raw_text="hello"),
         non_incident_extraction_result(),
-        "hello",
     )
 
     assert result is None
     assert db_session.query(Incident).count() == 0
 
 
-def test_persist_from_telegram_does_not_create_for_none_extraction(db_session: Session) -> None:
+def test_persist_incident_does_not_create_for_none_extraction(db_session: Session) -> None:
     """Verify missing extraction output is not persisted."""
 
     service = IncidentPersistenceService(db_session)
 
-    result = service.persist_from_telegram(
-        telegram_update(text="hello"),
+    result = service.persist_incident(
+        source_context(raw_text="hello"),
         None,
-        "hello",
     )
 
     assert result is None
