@@ -100,11 +100,20 @@ def receive_telegram_webhook(
 
         if extraction is not None:
             try:
-                persistence_result = incident_persistence_service.persist_from_telegram(update, extraction, message.text)
+                persistence_result = incident_persistence_service.persist_from_telegram(
+                    update,
+                    extraction,
+                    message.text,
+                )
             except (IncidentPersistenceError, ValueError):
                 persistence_error = INCIDENT_PERSISTENCE_UNAVAILABLE_ERROR
 
-        reply_text = build_telegram_reply_text(extraction, extraction_error, persistence_result, persistence_error)
+        reply_text = build_telegram_reply_text(
+            extraction,
+            extraction_error,
+            persistence_result,
+            persistence_error,
+        )
         try:
             telegram_bot_client.send_message(message.chat.id, reply_text)
             telegram_reply_sent = True
@@ -136,13 +145,22 @@ def build_telegram_reply_text(
     """Build a concise Telegram reply from extraction and persistence output."""
 
     if extraction_error or extraction is None:
-        return "I received your message, but I could not extract the incident details yet. Please send the location and what help is needed."
+        return (
+            "I received your message, but I could not extract the incident details yet. "
+            "Please send the location and what help is needed."
+        )
 
     if not extraction.is_incident:
-        return extraction.rejection_reason or "I can only process incident reports right now. Please send what happened, where it happened, and what help is needed."
+        return extraction.rejection_reason or (
+            "I can only process incident reports right now. Please send what happened, "
+            "where it happened, and what help is needed."
+        )
 
     if persistence_error:
-        return "Incident report received, but I could not save it yet. Please resend the location and what help is needed in one message."
+        return (
+            "Incident report received, but I could not save it yet. "
+            "Please resend the location and what help is needed in one message."
+        )
 
     if extraction.should_ask_follow_up and extraction.follow_up_question:
         return extraction.follow_up_question
