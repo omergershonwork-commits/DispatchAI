@@ -5,6 +5,22 @@ from pydantic import BaseModel, Field
 IncidentUrgency = Literal["unknown", "low", "medium", "high", "critical"]
 """Allowed urgency labels produced by incident extraction."""
 
+IncidentMissingField = Literal[
+    "incident_type",
+    "location_text",
+    "people_count",
+    "contact_name",
+    "phone_number",
+    "needs",
+]
+"""Incident fields that may require a follow-up question."""
+
+INCIDENT_ONLY_REPLY = (
+    "This bot is only for reporting help or rescue incidents. "
+    "Please describe what happened, where it happened, and what help is needed."
+)
+"""Fixed reply for messages that are unrelated to incident reporting."""
+
 
 class IncidentExtractionResult(BaseModel):
     """Validated incident details extracted from a free-text Telegram message."""
@@ -19,3 +35,8 @@ class IncidentExtractionResult(BaseModel):
     phone_number: str | None = Field(default=None, description="Phone number mentioned by the sender, when provided.")
     needs: list[str] = Field(default_factory=list, description="Concrete needs or resources requested by the sender.")
     confidence: float = Field(ge=0.0, le=1.0, description="Model confidence in the extracted details.")
+    missing_fields: list[IncidentMissingField] = Field(default_factory=list, description="Important fields still needed from the sender.")
+    follow_up_question: str | None = Field(default=None, description="Focused question to ask the sender when critical details are missing.")
+    should_create_incident: bool = Field(default=False, description="Whether the current data is enough to create an incident later.")
+    should_ask_follow_up: bool = Field(default=False, description="Whether the backend should ask the sender for more details.")
+    rejection_reason: str | None = Field(default=None, description="Reason for rejecting non-incident or unsupported messages.")
