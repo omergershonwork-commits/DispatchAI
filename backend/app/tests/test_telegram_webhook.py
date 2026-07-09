@@ -2,13 +2,17 @@ from fastapi.testclient import TestClient
 
 from app.api.telegram import (
     EXTRACTION_UNAVAILABLE_ERROR,
+    INCIDENT_PERSISTENCE_UNAVAILABLE_ERROR,
     TELEGRAM_REPLY_UNAVAILABLE_ERROR,
     get_incident_extraction_service,
+    get_incident_persistence_service,
     get_telegram_bot_client,
 )
 from app.main import app
 from app.schemas.incident import IncidentExtractionResult
+from app.schemas.telegram import TelegramWebhookUpdate
 from app.services.incident_extraction import IncidentExtractionError
+from app.services.incident_persistence import IncidentPersistenceError, IncidentPersistenceResult
 from app.services.telegram_bot_client import TelegramBotClientError
 
 client = TestClient(app)
@@ -41,6 +45,34 @@ class FakeIncidentExtractionService:
             raise self.error
         if self.result is None:
             raise AssertionError("Fake extraction service result was not configured.")
+        return self.result
+
+
+class FakeIncidentPersistenceService:
+    """Test double for incident persistence integration tests."""
+
+    def __init__(
+        self,
+        result: IncidentPersistenceResult | None = None,
+        error: Exception | None = None,
+    ) -> None:
+        """Create a fake persistence service that records calls."""
+
+        self.result = result
+        self.error = error
+        self.calls: list[tuple[TelegramWebhookUpdate, IncidentExtractionResult | None, str]] = []
+
+    def persist_from_telegram(
+        self,
+        update: TelegramWebhookUpdate,
+        extraction: IncidentExtractionResult | None,
+        raw_text: str,
+    ) -> IncidentPersistenceResult | None:
+        """Record a persistence call and return or raise the configured outcome."""
+
+        self.calls.append((update, extraction, raw_text))
+        if self.error:
+            raise self.error
         return self.result
 
 
@@ -133,10 +165,32 @@ def follow_up_extraction_result() -> IncidentExtractionResult:
     )
 
 
+def persisted_incident_result(
+    incident_id: int = 123,
+    status: str = "ready_for_dispatch",
+    created: bool = True,
+    updated: bool = False,
+) -> IncidentPersistenceResult:
+    """Return a fake persistence result for webhook tests."""
+
+    return IncidentPersistenceResult(
+        incident_id=incident_id,
+        status=status,
+        created=created,
+        updated=updated,
+    )
+
+
 def override_extraction_service(fake_service: FakeIncidentExtractionService) -> None:
     """Install a FastAPI dependency override for the extraction service."""
 
     app.dependency_overrides[get_incident_extraction_service] = lambda: fake_service
+
+
+def override_persistence_service(fake_service: FakeIncidentPersistenceService) -> None:
+    """Install a FastAPI dependency override for the persistence service."""
+
+    app.dependency_overrides[get_incident_persistence_service] = lambda: fake_service
 
 
 def override_telegram_bot_client(fake_bot_client: FakeTelegramBotClient) -> None:
@@ -151,12 +205,14 @@ def clear_dependency_overrides() -> None:
     app.dependency_overrides.clear()
 
 
-def test_telegram_webhook_accepts_text_message_runs_extraction_and_replies() -> None:
-    """Verify text webhooks run extraction and send a Telegram reply."""
+def test_telegram_webhook_accepts_text_message_extracts_persists_and_replies() -> None:
+    """Verify text webhooks run extraction, persist an incident, and send a reply."""
 
     fake_service = FakeIncidentExtractionService(result=actionable_extraction_result())
+    fake_persistence = FakeIncidentPersistenceService(result=persisted_incident_result())
     fake_bot_client = FakeTelegramBotClient()
     override_extraction_service(fake_service)
+    override_persistence_service(fake_persistence)
     override_telegram_bot_client(fake_bot_client)
 
     try:
@@ -190,19 +246,25 @@ def test_telegram_webhook_accepts_text_message_runs_extraction_and_replies() -> 
             "rejection_reason": None,
         },
         "extraction_error": None,
+        "incident_id": 123,
+        "incident_created": True,
+        "incident_status": "ready_for_dispatch",
+        "persistence_error": None,
         "telegram_reply_sent": True,
         "telegram_reply_error": None,
     }
     assert fake_service.last_message_text == "I need medical help near Dizengoff Center"
+    assert len(fake_persistence.calls) == 1
+    assert fake_persistence.calls[0][2] == "I need medical help near Dizengoff Center"
     assert fake_bot_client.sent_messages == [
         (
             987654321,
-            "Incident report received.\n"
+            "Incident #123 recorded.\n"
             "Summary: Person needs medical help near Dizengoff Center.\n"
             "Location: Dizengoff Center\n"
             "Urgency: high\n"
             "Needs: medical help\n"
-            "I will keep tracking this report while dispatch support is being prepared.",
+            "This report is ready for dispatch matching.",
         )
     ]
 
@@ -211,8 +273,12 @@ def test_telegram_webhook_sends_follow_up_question_when_extraction_needs_details
     """Verify the webhook replies with the extraction follow-up question when needed."""
 
     fake_service = FakeIncidentExtractionService(result=follow_up_extraction_result())
+    fake_persistence = FakeIncidentPersistenceService(
+        result=persisted_incident_result(incident_id=124, status="pending_details")
+    )
     fake_bot_client = FakeTelegramBotClient()
     override_extraction_service(fake_service)
+    override_persistence_service(fake_persistence)
     override_telegram_bot_client(fake_bot_client)
 
     try:
@@ -221,8 +287,11 @@ def test_telegram_webhook_sends_follow_up_question_when_extraction_needs_details
         clear_dependency_overrides()
 
     assert response.status_code == 202
+    assert response.json()["incident_id"] == 124
+    assert response.json()["incident_status"] == "pending_details"
     assert response.json()["telegram_reply_sent"] is True
     assert response.json()["telegram_reply_error"] is None
+    assert len(fake_persistence.calls) == 1
     assert fake_bot_client.sent_messages == [(987654321, "Where exactly is help needed?")]
 
 
@@ -241,17 +310,23 @@ def test_telegram_webhook_accepts_update_without_message() -> None:
         "has_text": False,
         "extraction": None,
         "extraction_error": None,
+        "incident_id": None,
+        "incident_created": False,
+        "incident_status": None,
+        "persistence_error": None,
         "telegram_reply_sent": False,
         "telegram_reply_error": None,
     }
 
 
-def test_telegram_webhook_accepts_non_text_message_without_extraction_or_reply() -> None:
-    """Verify non-text Telegram messages do not call extraction or reply sending."""
+def test_telegram_webhook_accepts_non_text_message_without_extraction_persistence_or_reply() -> None:
+    """Verify non-text Telegram messages do not call extraction, persistence, or reply sending."""
 
     fake_service = FakeIncidentExtractionService(result=actionable_extraction_result())
+    fake_persistence = FakeIncidentPersistenceService(result=persisted_incident_result())
     fake_bot_client = FakeTelegramBotClient()
     override_extraction_service(fake_service)
+    override_persistence_service(fake_persistence)
     override_telegram_bot_client(fake_bot_client)
     payload = telegram_text_payload()
     payload["message"].pop("text")
@@ -265,9 +340,14 @@ def test_telegram_webhook_accepts_non_text_message_without_extraction_or_reply()
     assert response.json()["has_text"] is False
     assert response.json()["extraction"] is None
     assert response.json()["extraction_error"] is None
+    assert response.json()["incident_id"] is None
+    assert response.json()["incident_created"] is False
+    assert response.json()["incident_status"] is None
+    assert response.json()["persistence_error"] is None
     assert response.json()["telegram_reply_sent"] is False
     assert response.json()["telegram_reply_error"] is None
     assert fake_service.last_message_text is None
+    assert fake_persistence.calls == []
     assert fake_bot_client.sent_messages == []
 
 
@@ -275,8 +355,10 @@ def test_telegram_webhook_accepts_when_extraction_fails_and_sends_safe_reply() -
     """Verify extraction failure does not make Telegram retry and still sends a reply."""
 
     fake_service = FakeIncidentExtractionService(error=IncidentExtractionError("bad model output"))
+    fake_persistence = FakeIncidentPersistenceService(result=persisted_incident_result())
     fake_bot_client = FakeTelegramBotClient()
     override_extraction_service(fake_service)
+    override_persistence_service(fake_persistence)
     override_telegram_bot_client(fake_bot_client)
 
     try:
@@ -287,9 +369,14 @@ def test_telegram_webhook_accepts_when_extraction_fails_and_sends_safe_reply() -
     assert response.status_code == 202
     assert response.json()["extraction"] is None
     assert response.json()["extraction_error"] == EXTRACTION_UNAVAILABLE_ERROR
+    assert response.json()["incident_id"] is None
+    assert response.json()["incident_created"] is False
+    assert response.json()["incident_status"] is None
+    assert response.json()["persistence_error"] is None
     assert response.json()["telegram_reply_sent"] is True
     assert response.json()["telegram_reply_error"] is None
     assert fake_service.last_message_text == "I need medical help near Dizengoff Center"
+    assert fake_persistence.calls == []
     assert fake_bot_client.sent_messages == [
         (
             987654321,
@@ -299,12 +386,47 @@ def test_telegram_webhook_accepts_when_extraction_fails_and_sends_safe_reply() -
     ]
 
 
+def test_telegram_webhook_accepts_when_persistence_fails_and_sends_safe_reply() -> None:
+    """Verify persistence failure does not make Telegram retry the webhook."""
+
+    fake_service = FakeIncidentExtractionService(result=actionable_extraction_result())
+    fake_persistence = FakeIncidentPersistenceService(error=IncidentPersistenceError("db unavailable"))
+    fake_bot_client = FakeTelegramBotClient()
+    override_extraction_service(fake_service)
+    override_persistence_service(fake_persistence)
+    override_telegram_bot_client(fake_bot_client)
+
+    try:
+        response = client.post("/webhooks/telegram", json=telegram_text_payload())
+    finally:
+        clear_dependency_overrides()
+
+    assert response.status_code == 202
+    assert response.json()["extraction"] is not None
+    assert response.json()["incident_id"] is None
+    assert response.json()["incident_created"] is False
+    assert response.json()["incident_status"] is None
+    assert response.json()["persistence_error"] == INCIDENT_PERSISTENCE_UNAVAILABLE_ERROR
+    assert response.json()["telegram_reply_sent"] is True
+    assert response.json()["telegram_reply_error"] is None
+    assert len(fake_persistence.calls) == 1
+    assert fake_bot_client.sent_messages == [
+        (
+            987654321,
+            "Incident report received, but I could not save it yet. "
+            "Please resend the location and what help is needed in one message.",
+        )
+    ]
+
+
 def test_telegram_webhook_accepts_when_reply_sending_fails() -> None:
     """Verify Telegram reply failure does not make Telegram retry the webhook."""
 
     fake_service = FakeIncidentExtractionService(result=actionable_extraction_result())
+    fake_persistence = FakeIncidentPersistenceService(result=persisted_incident_result())
     fake_bot_client = FakeTelegramBotClient(error=TelegramBotClientError("telegram unavailable"))
     override_extraction_service(fake_service)
+    override_persistence_service(fake_persistence)
     override_telegram_bot_client(fake_bot_client)
 
     try:
@@ -315,6 +437,10 @@ def test_telegram_webhook_accepts_when_reply_sending_fails() -> None:
     assert response.status_code == 202
     assert response.json()["extraction"] is not None
     assert response.json()["extraction_error"] is None
+    assert response.json()["incident_id"] == 123
+    assert response.json()["incident_created"] is True
+    assert response.json()["incident_status"] == "ready_for_dispatch"
+    assert response.json()["persistence_error"] is None
     assert response.json()["telegram_reply_sent"] is False
     assert response.json()["telegram_reply_error"] == TELEGRAM_REPLY_UNAVAILABLE_ERROR
 
