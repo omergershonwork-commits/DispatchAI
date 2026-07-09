@@ -396,7 +396,9 @@ def test_telegram_webhook_accepts_when_persistence_fails_and_sends_safe_reply() 
     """Verify persistence failure does not make Telegram retry the webhook."""
 
     fake_service = FakeIncidentExtractionService(result=actionable_extraction_result())
-    fake_persistence = FakeIncidentPersistenceService(error=IncidentPersistenceError("db unavailable"))
+    fake_persistence = FakeIncidentPersistenceService(
+        error=IncidentPersistenceError("db unavailable")
+    )
     fake_bot_client = FakeTelegramBotClient()
     override_extraction_service(fake_service)
     override_persistence_service(fake_persistence)
