@@ -1,5 +1,3 @@
-from typing import Protocol
-
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
@@ -29,24 +27,6 @@ router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 """Router containing Telegram webhook ingestion endpoints."""
 
 
-class TelegramReplySender(Protocol):
-    """Protocol for objects that can send Telegram chat replies."""
-
-    def send_message(self, chat_id: int, text: str) -> object:
-        """Send a text message to a Telegram chat."""
-
-
-class IncidentPersister(Protocol):
-    """Protocol for objects that persist source-agnostic incident extractions."""
-
-    def persist_incident(
-        self,
-        source_context: SourceIncidentContext,
-        extraction: IncidentExtractionResult | None,
-    ) -> IncidentPersistenceResult | None:
-        """Create or update an incident from source metadata and extraction."""
-
-
 def get_incident_extraction_service() -> IncidentExtractionService:
     """Return the incident extraction service used by Telegram webhook ingestion."""
 
@@ -73,8 +53,8 @@ def get_telegram_bot_client() -> TelegramBotClient:
 def receive_telegram_webhook(
     update: TelegramWebhookUpdate,
     extraction_service: IncidentExtractionService = Depends(get_incident_extraction_service),
-    incident_persistence_service: IncidentPersister = Depends(get_incident_persistence_service),
-    telegram_bot_client: TelegramReplySender = Depends(get_telegram_bot_client),
+    incident_persistence_service: IncidentPersistenceService = Depends(get_incident_persistence_service),
+    telegram_bot_client: TelegramBotClient = Depends(get_telegram_bot_client),
 ) -> TelegramWebhookAccepted:
     """Accept a Telegram webhook update, extract text details, persist it, and reply.
 
