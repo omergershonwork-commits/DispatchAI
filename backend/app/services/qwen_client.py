@@ -1,5 +1,7 @@
 from dataclasses import dataclass
+import json
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
@@ -13,6 +15,32 @@ DEFAULT_MAX_TOKENS = 1024
 
 CHAT_COMPLETIONS_PATH = "/v1/chat/completions"
 """OpenAI-compatible chat completions path exposed by the Qwen inference server."""
+
+QWEN_HEADER_MODE_AUTO = "auto"
+"""Automatically choose request headers based on whether Qwen is local or remote."""
+
+QWEN_HEADER_MODE_NONE = "none"
+"""Disable default Qwen request headers."""
+
+QWEN_HEADER_MODE_PINGGY = "pinggy"
+"""Force Pinggy-compatible bypass headers for Qwen requests."""
+
+SUPPORTED_QWEN_HEADER_MODES = {
+    QWEN_HEADER_MODE_AUTO,
+    QWEN_HEADER_MODE_NONE,
+    QWEN_HEADER_MODE_PINGGY,
+}
+"""Supported values for QWEN_REQUEST_HEADERS_MODE."""
+
+LOCAL_QWEN_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "::1", "host.docker.internal"}
+"""Hostnames that should be treated as local Qwen endpoints."""
+
+PINGGY_BYPASS_HEADERS = {
+    "X-Pinggy-No-Screen": "true",
+    "User-Agent": "DispatchAI-dev-test",
+    "Accept": "application/json",
+}
+"""Headers required for Pinggy free tunnels to return API JSON instead of a caution page."""
 
 
 class QwenClientError(RuntimeError):
@@ -33,14 +61,74 @@ class QwenGenerateResponse:
     """Raw JSON response returned by the inference server."""
 
 
+def is_local_qwen_url(base_url: str) -> bool:
+    """Return whether a Qwen base URL points to a local endpoint."""
+
+    parsed_url = urlparse(base_url)
+    hostname = parsed_url.hostname
+    if hostname is None:
+        return False
+
+    return hostname.lower() in LOCAL_QWEN_HOSTS
+
+
+def parse_qwen_extra_headers(headers_json: str) -> dict[str, str]:
+    """Parse optional Qwen extra headers from a JSON object string."""
+
+    if not headers_json.strip():
+        return {}
+
+    try:
+        raw_headers = json.loads(headers_json)
+    except json.JSONDecodeError as exc:
+        raise QwenClientError("QWEN_EXTRA_HEADERS_JSON must be a valid JSON object.") from exc
+
+    if not isinstance(raw_headers, dict):
+        raise QwenClientError("QWEN_EXTRA_HEADERS_JSON must be a JSON object.")
+
+    parsed_headers: dict[str, str] = {}
+    for key, value in raw_headers.items():
+        if not isinstance(key, str) or not key.strip():
+            raise QwenClientError("QWEN_EXTRA_HEADERS_JSON header names must be non-empty strings.")
+        if not isinstance(value, str):
+            raise QwenClientError("QWEN_EXTRA_HEADERS_JSON header values must be strings.")
+        parsed_headers[key] = value
+
+    return parsed_headers
+
+
+def resolve_qwen_request_headers(base_url: str, headers_mode: str, extra_headers_json: str) -> dict[str, str]:
+    """Resolve the headers that should be sent to the Qwen-compatible server."""
+
+    normalized_mode = headers_mode.strip().lower()
+    if normalized_mode not in SUPPORTED_QWEN_HEADER_MODES:
+        raise QwenClientError(
+            "QWEN_REQUEST_HEADERS_MODE must be one of: auto, none, pinggy."
+        )
+
+    if normalized_mode == QWEN_HEADER_MODE_NONE:
+        request_headers: dict[str, str] = {}
+    elif normalized_mode == QWEN_HEADER_MODE_PINGGY:
+        request_headers = dict(PINGGY_BYPASS_HEADERS)
+    elif is_local_qwen_url(base_url):
+        request_headers = {}
+    else:
+        request_headers = dict(PINGGY_BYPASS_HEADERS)
+
+    request_headers.update(parse_qwen_extra_headers(extra_headers_json))
+    return request_headers
+
+
 class QwenClient:
-    """Small HTTP client for a local Qwen-compatible chat completions server."""
+    """Small HTTP client for a Qwen-compatible chat completions server."""
 
     def __init__(
         self,
         base_url: str = settings.qwen_base_url,
         model_name: str = settings.qwen_model_name,
         timeout_seconds: float = settings.qwen_timeout_seconds,
+        headers_mode: str = settings.qwen_request_headers_mode,
+        extra_headers_json: str = settings.qwen_extra_headers_json,
         http_client: httpx.Client | None = None,
     ) -> None:
         """Create a Qwen client with injectable HTTP transport for tests."""
@@ -53,6 +141,9 @@ class QwenClient:
 
         self.timeout_seconds = timeout_seconds
         """Request timeout in seconds."""
+
+        self.request_headers = resolve_qwen_request_headers(self.base_url, headers_mode, extra_headers_json)
+        """Optional headers sent with every Qwen request."""
 
         self._http_client = http_client
         """Optional externally owned HTTP client used for tests or custom transports."""
@@ -93,13 +184,14 @@ class QwenClient:
 
         url = f"{self.base_url}{CHAT_COMPLETIONS_PATH}"
         timeout = httpx.Timeout(self.timeout_seconds)
+        headers = self.request_headers or None
 
         try:
             if self._http_client is not None:
-                response = self._http_client.post(url, json=payload, timeout=timeout)
+                response = self._http_client.post(url, json=payload, headers=headers, timeout=timeout)
             else:
                 with httpx.Client(timeout=timeout) as client:
-                    response = client.post(url, json=payload)
+                    response = client.post(url, json=payload, headers=headers)
 
             response.raise_for_status()
             response_json = response.json()
