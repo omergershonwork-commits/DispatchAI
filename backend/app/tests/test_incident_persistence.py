@@ -3,7 +3,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.session import Base
-from app.models.incident import INCIDENT_STATUS_PENDING_DETAILS, INCIDENT_STATUS_READY_FOR_DISPATCH, Incident
+from app.models.incident import (
+    INCIDENT_STATUS_PENDING_DETAILS,
+    INCIDENT_STATUS_READY_FOR_DISPATCH,
+    Incident,
+)
 from app.schemas.incident import IncidentExtractionResult
 from app.schemas.telegram import TelegramWebhookUpdate
 from app.services.incident_persistence import IncidentPersistenceService
@@ -181,7 +185,11 @@ def test_persist_from_telegram_updates_existing_pending_incident(db_session: Ses
     )
 
     second_result = service.persist_from_telegram(
-        telegram_update(update_id=123457, message_id=43, text="The location is Dizengoff Center"),
+        telegram_update(
+            update_id=123457,
+            message_id=43,
+            text="The location is Dizengoff Center",
+        ),
         actionable_extraction_result(),
         "The location is Dizengoff Center",
     )
