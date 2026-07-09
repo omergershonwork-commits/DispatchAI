@@ -320,7 +320,7 @@ def test_telegram_webhook_accepts_update_without_message() -> None:
 
 
 def test_telegram_webhook_accepts_non_text_message_without_extraction_persistence_or_reply() -> None:
-    """Verify non-text Telegram messages do not call extraction, persistence, or reply sending."""
+    """Verify non-text messages do not call extraction, persistence, or reply sending."""
 
     fake_service = FakeIncidentExtractionService(result=actionable_extraction_result())
     fake_persistence = FakeIncidentPersistenceService(result=persisted_incident_result())
