@@ -337,8 +337,8 @@ def _expected_non_message_webhook_response() -> dict:
     }
 
 
-def test_telegram_webhook_accepts_non_text_message_without_extraction_persistence_or_reply() -> None:
-    """Verify non-text messages do not call extraction, persistence, or reply sending."""
+def test_telegram_webhook_accepts_non_text_message_without_processing() -> None:
+    """Verify non-text Telegram messages skip processing."""
 
     fake_service = FakeIncidentExtractionService(result=actionable_extraction_result())
     fake_persistence = FakeIncidentPersistenceService(result=persisted_incident_result())
