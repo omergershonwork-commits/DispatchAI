@@ -221,7 +221,27 @@ def test_telegram_webhook_accepts_text_message_extracts_persists_and_replies() -
         clear_dependency_overrides()
 
     assert response.status_code == 202
-    assert response.json() == {
+    assert response.json() == _expected_actionable_webhook_response()
+    assert fake_service.last_message_text == "I need medical help near Dizengoff Center"
+    assert len(fake_persistence.calls) == 1
+    assert fake_persistence.calls[0][2] == "I need medical help near Dizengoff Center"
+    assert fake_bot_client.sent_messages == [
+        (
+            987654321,
+            "Incident #123 recorded.\n"
+            "Summary: Person needs medical help near Dizengoff Center.\n"
+            "Location: Dizengoff Center\n"
+            "Urgency: high\n"
+            "Needs: medical help\n"
+            "This report is ready for dispatch matching.",
+        )
+    ]
+
+
+def _expected_actionable_webhook_response() -> dict:
+    """Return the full webhook response expected for an actionable incident."""
+
+    return {
         "status": "accepted",
         "source": "telegram",
         "update_id": 123456,
@@ -253,20 +273,6 @@ def test_telegram_webhook_accepts_text_message_extracts_persists_and_replies() -
         "telegram_reply_sent": True,
         "telegram_reply_error": None,
     }
-    assert fake_service.last_message_text == "I need medical help near Dizengoff Center"
-    assert len(fake_persistence.calls) == 1
-    assert fake_persistence.calls[0][2] == "I need medical help near Dizengoff Center"
-    assert fake_bot_client.sent_messages == [
-        (
-            987654321,
-            "Incident #123 recorded.\n"
-            "Summary: Person needs medical help near Dizengoff Center.\n"
-            "Location: Dizengoff Center\n"
-            "Urgency: high\n"
-            "Needs: medical help\n"
-            "This report is ready for dispatch matching.",
-        )
-    ]
 
 
 def test_telegram_webhook_sends_follow_up_question_when_extraction_needs_details() -> None:
