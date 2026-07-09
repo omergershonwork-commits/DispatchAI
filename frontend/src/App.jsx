@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import MapComponent from './MapComponent'
+import IncidentCard from './components/IncidentCard'
+import AIReasoning from './components/AIReasoning'
 import './App.css'
 
 function App() {
@@ -10,6 +12,36 @@ function App() {
   // Sidebar states
   const [isLeftOpen, setIsLeftOpen] = useState(true);
   const [isRightOpen, setIsRightOpen] = useState(true);
+
+  // Mock Incidents Data
+  const mockIncidents = [
+    {
+      id: 1,
+      type: 'fire',
+      severity: 'critical',
+      time: '14:32',
+      message: 'Help! There is a huge fire in the Dizengoff Center tunnel, people are trapped!',
+      locationName: 'Dizengoff Center, TLV',
+    },
+    {
+      id: 2,
+      type: 'medical',
+      severity: 'high',
+      time: '14:30',
+      message: 'Someone collapsed on the street, not breathing, send help fast.',
+      locationName: 'Rothschild Blvd 22, TLV',
+    },
+    {
+      id: 3,
+      type: 'security',
+      severity: 'medium',
+      time: '14:15',
+      message: 'Suspicious object found near the bus station, please check.',
+      locationName: 'Central Bus Station, TLV',
+    }
+  ];
+
+  const [selectedIncident, setSelectedIncident] = useState(null);
 
   return (
     <div className="app-container">
@@ -41,10 +73,14 @@ function App() {
             </button>
           </div>
           <div className="panel-content">
-            <p style={{ opacity: 0.5, fontSize: '0.9rem', textAlign: 'center', marginTop: '2rem' }}>
-              Waiting for incoming WhatsApp messages...
-            </p>
-            {/* Future: We will map() over incidents and render Card components here */}
+            {mockIncidents.map(inc => (
+              <IncidentCard 
+                key={inc.id}
+                incident={inc}
+                isSelected={selectedIncident?.id === inc.id}
+                onClick={setSelectedIncident}
+              />
+            ))}
           </div>
         </aside>
 
@@ -74,10 +110,7 @@ function App() {
             AI Reasoning
           </div>
           <div className="panel-content">
-             <p style={{ opacity: 0.5, fontSize: '0.9rem', textAlign: 'center', marginTop: '2rem', lineHeight: '1.5' }}>
-              Qwen LLM thought process will appear here when an incident is processed.
-            </p>
-            {/* Future: Expandable accordion components will go here */}
+            <AIReasoning incident={selectedIncident} />
           </div>
         </aside>
 

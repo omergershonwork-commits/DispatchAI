@@ -1,0 +1,122 @@
+.ai-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-secondary);
+  text-align: center;
+  gap: 15px;
+  padding: 20px;
+}
+
+.ai-reasoning-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.ai-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--neon-cyan);
+  font-weight: bold;
+  margin-bottom: 15px;
+  font-size: 0.9rem;
+  letter-spacing: 0.5px;
+}
+
+.terminal-window {
+  background-color: #0d1117; /* GitHub dark dim */
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  overflow: hidden;
+  font-family: 'Fira Code', 'Courier New', Courier, monospace;
+}
+
+.terminal-header {
+  background-color: #161b22;
+  padding: 8px 12px;
+  display: flex;
+  gap: 6px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.dot.red { background-color: #ff5f56; }
+.dot.yellow { background-color: #ffbd2e; }
+.dot.green { background-color: #27c93f; }
+
+.terminal-body {
+  padding: 15px;
+  font-size: 0.85rem;
+  color: #c9d1d9;
+}
+
+.log-line {
+  margin-bottom: 12px;
+  line-height: 1.5;
+}
+
+.prompt {
+  color: var(--neon-cyan);
+  margin-right: 8px;
+  font-weight: bold;
+}
+
+.text-input {
+  color: #8b949e;
+}
+
+.processing-steps {
+  margin: 15px 0 15px 15px;
+  border-left: 1px dashed var(--border-color);
+  padding-left: 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.step-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  opacity: 0;
+  transform: translateY(5px);
+  transition: all 0.3s ease;
+}
+
+.step-item.visible {
+  opacity: 1;
+  transform: translateY(0);
+  color: var(--text-primary);
+}
+
+.step-placeholder {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid var(--border-color);
+}
+
+.result {
+  color: var(--neon-green);
+  font-weight: bold;
+  margin-top: 20px;
+}
+
+.fade-in {
+  animation: fadeIn 0.5s forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
