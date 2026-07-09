@@ -225,7 +225,13 @@ def test_telegram_webhook_accepts_text_message_extracts_persists_and_replies() -
     assert fake_service.last_message_text == "I need medical help near Dizengoff Center"
     assert len(fake_persistence.calls) == 1
     assert fake_persistence.calls[0][2] == "I need medical help near Dizengoff Center"
-    assert fake_bot_client.sent_messages == [
+    assert fake_bot_client.sent_messages == _expected_actionable_bot_messages()
+
+
+def _expected_actionable_bot_messages() -> list[tuple[int, str]]:
+    """Return the expected Telegram bot reply for an actionable incident."""
+
+    return [
         (
             987654321,
             "Incident #123 recorded.\n"
