@@ -167,7 +167,9 @@ function App() {
     <div className="app-container">
       {/* 1. Top Navigation & Stats Bar */}
       <header className="topbar">
-        <div className="topbar-title">DispatchAI</div>
+        <div className="topbar-logo">
+          Dispatch <span className="logo-accent">AI</span>
+        </div>
         <div className="topbar-stats">
           <div className="stat-item">
             <span>Active Incidents:</span>

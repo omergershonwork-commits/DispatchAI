@@ -17,13 +17,21 @@
   z-index: 1000;
 }
 
-.topbar-title {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: var(--tactical-blue);
+.topbar-logo {
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text-primary);
   letter-spacing: 2px;
-  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+}
+
+.logo-accent {
+  color: var(--tactical-blue);
+  font-family: 'IBM Plex Mono', monospace;
+  font-weight: 500;
+  margin-left: 2px;
 }
 
 .topbar-stats {
