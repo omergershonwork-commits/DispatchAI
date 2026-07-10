@@ -3,18 +3,16 @@ import MapComponent from './MapComponent'
 import IncidentCard from './components/IncidentCard'
 import VolunteerCard from './components/VolunteerCard'
 import AIReasoning from './components/AIReasoning'
+import VolunteerDossier from './components/VolunteerDossier'
 import { PanelLeftClose, PanelRightClose, AlertTriangle, ShieldAlert, Activity, Users } from 'lucide-react'
 import './App.css'
 
 function App() {
-  // Mock state for our Top Bar stats
-  const [activeIncidentsCount, setActiveIncidentsCount] = useState(0);
-  const [availableVolunteersCount, setAvailableVolunteersCount] = useState(50);
-  
-  // Sidebar states
   const [isLeftOpen, setIsLeftOpen] = useState(true);
   const [isRightOpen, setIsRightOpen] = useState(false); // Closed by default
   const [leftTab, setLeftTab] = useState('incidents'); // 'incidents' or 'forces'
+  const [selectedIncident, setSelectedIncident] = useState(null);
+  const [selectedVolunteer, setSelectedVolunteer] = useState(null);
 
   const handleTabClick = (tab) => {
     if (leftTab === tab && isLeftOpen) {
@@ -22,12 +20,22 @@ function App() {
     } else {
       setLeftTab(tab);
       setIsLeftOpen(true);
+      // Switch right panel automatically if we have a selection in that tab
+      if (tab === 'incidents' && selectedIncident) setIsRightOpen(true);
+      if (tab === 'forces' && selectedVolunteer) setIsRightOpen(true);
     }
   };
 
   const handleIncidentClick = (incident) => {
     setSelectedIncident(incident);
-    setIsRightOpen(true); // Open the dossier when an incident is selected
+    setLeftTab('incidents');
+    setIsRightOpen(true);
+  };
+
+  const handleVolunteerClick = (volunteer) => {
+    setSelectedVolunteer(volunteer);
+    setLeftTab('forces');
+    setIsRightOpen(true);
   };
 
   // Mock Incidents Data (With coordinates for the map)
@@ -95,20 +103,65 @@ function App() {
 
   // Mock Volunteers Data
   const mockVolunteers = [
-    { id: 101, position: [32.0730, 34.7700], status: 'en_route', assignedTo: 1, name: 'David Cohen', role: 'Paramedic', distance: '2.1 km' },
-    { id: 102, position: [32.0650, 34.7650], status: 'available', assignedTo: null, name: 'Yael Levi', role: 'Rider', distance: '0.5 km' },
-    { id: 103, position: [32.0580, 34.7750], status: 'on_scene', assignedTo: 2, name: 'Avi Yitzhak', role: 'Driver', distance: '1.2 km' },
-    { id: 104, position: [32.0800, 34.7850], status: 'waiting', assignedTo: 1, name: 'Sarah Aharon', role: 'Paramedic', distance: '4.0 km' },
-    { id: 105, position: [32.0500, 34.7700], status: 'available', assignedTo: null, name: 'Moshe Ben-David', role: 'Rider', distance: '3.3 km' },
-    { id: 106, position: [32.0880, 34.7750], status: 'en_route', assignedTo: 1, name: 'Maya Golan', role: 'Rider', distance: '5.1 km' },
-    { id: 107, position: [32.0710, 34.7850], status: 'available', assignedTo: null, name: 'Ronit Schwartz', role: 'Paramedic', distance: '1.8 km' },
-    { id: 108, position: [32.0590, 34.7600], status: 'waiting', assignedTo: 2, name: 'Eli Malka', role: 'Rider', distance: '0.9 km' },
-    { id: 109, position: [32.0450, 34.7550], status: 'available', assignedTo: null, name: 'Tamar Edri', role: 'Paramedic', distance: '3.5 km' },
-    { id: 110, position: [32.0620, 34.7800], status: 'on_scene', assignedTo: 3, name: 'Idan Levy', role: 'Driver', distance: '1.5 km' },
-    { id: 111, position: [32.0950, 34.7820], status: 'available', assignedTo: null, name: 'Omer Gershon', role: 'Rider', distance: '6.2 km' }
+    { 
+      id: 101, position: [32.0730, 34.7700], status: 'en_route', assignedTo: 1, name: 'David Cohen', role: 'Paramedic', distance: '2.1 km',
+      gender: 'Male', height: '1.82m', weight: '85kg', trustScore: '99%', incidentsHandled: 42,
+      equipment: ['Trauma Kit', 'Oxygen', 'Defibrillator'], vehicle: 'Heavy Motorcycle (BMW)', skills: ['Advanced Life Support', 'Combat Medic']
+    },
+    { 
+      id: 102, position: [32.0650, 34.7650], status: 'available', assignedTo: null, name: 'Yael Levi', role: 'Rider', distance: '0.5 km',
+      gender: 'Female', height: '1.65m', weight: '60kg', trustScore: '95%', incidentsHandled: 15,
+      equipment: ['BLS Bag', 'Bandages'], vehicle: 'Scooter 125cc', skills: ['Basic First Aid', 'Fast Navigation']
+    },
+    { 
+      id: 103, position: [32.0580, 34.7750], status: 'on_scene', assignedTo: 2, name: 'Avi Yitzhak', role: 'Driver', distance: '1.2 km',
+      gender: 'Male', height: '1.78m', weight: '90kg', trustScore: '88%', incidentsHandled: 120,
+      equipment: ['BLS Bag', 'Stretcher'], vehicle: 'Ambulance', skills: ['Emergency Driving', 'ALS Assist']
+    },
+    { 
+      id: 104, position: [32.0800, 34.7850], status: 'waiting', assignedTo: 1, name: 'Sarah Aharon', role: 'Paramedic', distance: '4.0 km',
+      gender: 'Female', height: '1.70m', weight: '65kg', trustScore: '100%', incidentsHandled: 8,
+      equipment: ['Full Paramedic Bag'], vehicle: 'Private Car (SUV)', skills: ['Pediatric Care', 'Trauma']
+    },
+    { 
+      id: 105, position: [32.0500, 34.7700], status: 'available', assignedTo: null, name: 'Moshe Ben-David', role: 'Rider', distance: '3.3 km',
+      gender: 'Male', height: '1.75m', weight: '78kg', trustScore: '92%', incidentsHandled: 27,
+      equipment: ['BLS Bag', 'Burns Kit'], vehicle: 'Motorcycle 500cc', skills: ['Basic First Aid']
+    },
+    { 
+      id: 106, position: [32.0880, 34.7750], status: 'en_route', assignedTo: 1, name: 'Maya Golan', role: 'Rider', distance: '5.1 km',
+      gender: 'Female', height: '1.68m', weight: '62kg', trustScore: '96%', incidentsHandled: 34,
+      equipment: ['First Responder Bag'], vehicle: 'Scooter 250cc', skills: ['Basic First Aid', 'Search & Rescue']
+    },
+    { 
+      id: 107, position: [32.0710, 34.7850], status: 'available', assignedTo: null, name: 'Ronit Schwartz', role: 'Paramedic', distance: '1.8 km',
+      gender: 'Female', height: '1.72m', weight: '68kg', trustScore: '98%', incidentsHandled: 89,
+      equipment: ['Advanced Paramedic Bag', 'Intubation Kit'], vehicle: 'Private Car', skills: ['ALS', 'Toxicology']
+    },
+    { 
+      id: 108, position: [32.0590, 34.7600], status: 'waiting', assignedTo: 2, name: 'Eli Malka', role: 'Rider', distance: '0.9 km',
+      gender: 'Male', height: '1.85m', weight: '88kg', trustScore: '90%', incidentsHandled: 12,
+      equipment: ['BLS Bag'], vehicle: 'Motorcycle 300cc', skills: ['Basic First Aid']
+    },
+    { 
+      id: 109, position: [32.0450, 34.7550], status: 'available', assignedTo: null, name: 'Tamar Edri', role: 'Paramedic', distance: '3.5 km',
+      gender: 'Female', height: '1.60m', weight: '55kg', trustScore: '100%', incidentsHandled: 4,
+      equipment: ['Trauma Kit', 'Defibrillator'], vehicle: 'Ambulance', skills: ['ALS', 'Pediatric Care']
+    },
+    { 
+      id: 110, position: [32.0620, 34.7800], status: 'on_scene', assignedTo: 3, name: 'Idan Levy', role: 'Driver', distance: '1.5 km',
+      gender: 'Male', height: '1.76m', weight: '80kg', trustScore: '94%', incidentsHandled: 55,
+      equipment: ['BLS Bag'], vehicle: 'Ambulance', skills: ['Emergency Driving']
+    },
+    { 
+      id: 111, position: [32.0950, 34.7820], status: 'available', assignedTo: null, name: 'Omer Gershon', role: 'Rider', distance: '6.2 km',
+      gender: 'Male', height: '1.80m', weight: '75kg', trustScore: '99%', incidentsHandled: 210,
+      equipment: ['First Responder Bag'], vehicle: 'Motorcycle 600cc', skills: ['Basic First Aid']
+    }
   ];
 
-  const [selectedIncident, setSelectedIncident] = useState(null);
+  const activeIncidentsCount = mockIncidents.length;
+  const availableVolunteersCount = mockVolunteers.filter(v => v.status === 'available').length;
 
   return (
     <div className="app-container">
@@ -167,7 +220,12 @@ function App() {
               />
             ))}
             {leftTab === 'forces' && mockVolunteers.map(vol => (
-              <VolunteerCard key={vol.id} volunteer={vol} />
+              <VolunteerCard 
+                key={vol.id} 
+                volunteer={vol} 
+                onClick={() => handleVolunteerClick(vol)}
+                isSelected={selectedVolunteer?.id === vol.id}
+              />
             ))}
           </div>
         </aside>
@@ -178,13 +236,16 @@ function App() {
           </button>
         )}
 
-        {/* Center: Map Area */}
+        {/* Map Area */}
         <main className="map-container" style={{ position: 'relative' }}>
           <MapComponent 
             isLeftOpen={isLeftOpen} 
             isRightOpen={isRightOpen} 
-            incidents={mockIncidents}
+            incidents={mockIncidents} 
             volunteers={mockVolunteers}
+            selectedVolunteer={selectedVolunteer}
+            onVolunteerClick={handleVolunteerClick}
+            onIncidentClick={handleIncidentClick}
           />
         </main>
 
@@ -194,16 +255,17 @@ function App() {
           </button>
         )}
 
-        {/* Right Sidebar: AI Intelligence */}
+        {/* Right Sidebar: Dossier (Incident or Volunteer) */}
         <aside className={`sidebar-right ${!isRightOpen ? 'collapsed' : ''}`}>
           <div className="panel-header">
-            <button className="toggle-btn" onClick={() => setIsRightOpen(false)} title="Close Sidebar">
+            {leftTab === 'incidents' ? 'Incident Dossier' : 'Volunteer Dossier'}
+            <button className="toggle-btn" onClick={() => setIsRightOpen(false)} title="Close Dossier">
               ❯
             </button>
-            AI Intelligence
           </div>
           <div className="panel-content" style={{ padding: 0 }}>
-            <AIReasoning incident={selectedIncident} volunteers={mockVolunteers} />
+            {leftTab === 'incidents' && <AIReasoning incident={selectedIncident} volunteers={mockVolunteers} />}
+            {leftTab === 'forces' && <VolunteerDossier volunteer={selectedVolunteer} incident={mockIncidents.find(i => i.id === selectedVolunteer?.assignedTo)} />}
           </div>
         </aside>
 

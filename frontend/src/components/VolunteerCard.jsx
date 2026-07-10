@@ -11,11 +11,14 @@ const getRoleIcon = (role) => {
   }
 };
 
-const VolunteerCard = ({ volunteer }) => {
+const VolunteerCard = ({ volunteer, onClick, isSelected }) => {
   const isAvailable = volunteer.status === 'available';
 
   return (
-    <div className={`volunteer-card ${volunteer.status}`}>
+    <div 
+      className={`volunteer-card ${volunteer.status} ${isSelected ? 'selected' : ''}`}
+      onClick={onClick}
+    >
       <div className="volunteer-header">
         <div className="volunteer-icon">
           {getRoleIcon(volunteer.role)}

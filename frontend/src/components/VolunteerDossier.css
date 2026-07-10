@@ -1,0 +1,149 @@
+.volunteer-dossier-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.volunteer-dossier-container .dossier-content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  overflow-y: auto;
+  flex: 1;
+  padding: 24px 16px 24px 24px;
+}
+
+.profile-header {
+  display: flex;
+  flex-direction: row !important;
+  align-items: center;
+  gap: 16px !important;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.profile-avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background-color: rgba(96, 165, 250, 0.1);
+  border: 2px solid var(--tactical-blue);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.profile-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.profile-name {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.profile-role {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.profile-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  margin-top: 4px;
+}
+
+.bio-grid {
+  grid-template-columns: 1fr 1fr;
+}
+
+.telemetry-grid {
+  grid-template-columns: 1fr 1fr;
+}
+
+.inline-icon {
+  margin-right: 4px;
+  vertical-align: middle;
+  position: relative;
+  top: -1px;
+}
+
+.readiness-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.readiness-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  padding: 12px;
+  border-radius: 6px;
+}
+
+.readiness-icon {
+  color: var(--tactical-blue);
+  flex-shrink: 0;
+}
+
+.readiness-details {
+  display: flex;
+  flex-direction: column;
+}
+
+.readiness-label {
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+
+.readiness-value {
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.assignment-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background-color: rgba(248, 113, 113, 0.05);
+  border: 1px solid rgba(248, 113, 113, 0.2);
+  padding: 12px;
+  border-radius: 6px;
+}
+
+.assignment-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.assignment-id {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.assignment-location {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.assignment-distance {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
