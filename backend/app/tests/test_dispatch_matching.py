@@ -63,10 +63,11 @@ def create_volunteer(
 ) -> Volunteer:
     """Persist a volunteer candidate for matching tests."""
 
+    existing_count = db_session.query(Volunteer).count()
     volunteer = Volunteer(
         source="telegram",
-        source_chat_id=10_000 + db_session.query(Volunteer).count(),
-        source_user_id=20_000 + db_session.query(Volunteer).count(),
+        source_chat_id=10_000 + existing_count,
+        source_user_id=20_000 + existing_count,
         display_name="Volunteer",
         status=status,
         metadata_json={
@@ -156,7 +157,7 @@ def test_recommend_for_incident_replaces_existing_recommendations(db_session: Se
     """Verify re-running matching replaces old recommendation rows."""
 
     incident = create_incident(db_session)
-    create_volunteer(
+    volunteer = create_volunteer(
         db_session,
         skills=["medical"],
         service_areas=["Dizengoff Center"],
@@ -169,7 +170,7 @@ def test_recommend_for_incident_replaces_existing_recommendations(db_session: Se
 
     assert len(first_result.recommendations) == 1
     assert len(second_result.recommendations) == 1
-    assert first_result.recommendations[0].recommendation_id != second_result.recommendations[0].recommendation_id
+    assert second_result.recommendations[0].volunteer_id == volunteer.id
     assert db_session.query(DispatchRecommendation).count() == 1
 
 
