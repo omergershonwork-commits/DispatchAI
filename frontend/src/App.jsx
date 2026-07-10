@@ -13,6 +13,7 @@ function App() {
   const [leftTab, setLeftTab] = useState('incidents'); // 'incidents' or 'forces'
   const [selectedIncident, setSelectedIncident] = useState(null);
   const [selectedVolunteer, setSelectedVolunteer] = useState(null);
+  const [activeDossier, setActiveDossier] = useState(null); // 'incident' or 'volunteer'
 
   const handleTabClick = (tab) => {
     if (leftTab === tab && isLeftOpen) {
@@ -26,15 +27,24 @@ function App() {
     }
   };
 
-  const handleIncidentClick = (incident) => {
+  const handleIncidentClick = (incident, keepRightVolunteer = false) => {
     setSelectedIncident(incident);
     setLeftTab('incidents');
-    setIsRightOpen(true);
+    if (keepRightVolunteer) {
+      setActiveDossier('volunteer');
+      setIsRightOpen(true);
+    } else {
+      setActiveDossier('incident');
+      setIsRightOpen(true);
+    }
   };
 
-  const handleVolunteerClick = (volunteer) => {
+  const handleVolunteerClick = (volunteer, keepTab = false) => {
     setSelectedVolunteer(volunteer);
-    setLeftTab('forces');
+    if (!keepTab) {
+      setLeftTab('forces');
+    }
+    setActiveDossier('volunteer');
     setIsRightOpen(true);
   };
 
@@ -246,6 +256,8 @@ function App() {
             incidents={mockIncidents} 
             volunteers={mockVolunteers}
             selectedVolunteer={selectedVolunteer}
+            selectedIncident={selectedIncident}
+            leftTab={leftTab}
             onVolunteerClick={handleVolunteerClick}
             onIncidentClick={handleIncidentClick}
           />
@@ -260,14 +272,14 @@ function App() {
         {/* Right Sidebar: Dossier (Incident or Volunteer) */}
         <aside className={`sidebar-right ${!isRightOpen ? 'collapsed' : ''}`}>
           <div className="panel-header">
-            {leftTab === 'incidents' ? 'Incident Dossier' : 'Volunteer Dossier'}
+            {activeDossier === 'incident' ? 'Incident Dossier' : 'Volunteer Dossier'}
             <button className="toggle-btn" onClick={() => setIsRightOpen(false)} title="Close Dossier">
               ❯
             </button>
           </div>
           <div className="panel-content" style={{ padding: 0 }}>
-            {leftTab === 'incidents' && <AIReasoning incident={selectedIncident} volunteers={mockVolunteers} />}
-            {leftTab === 'forces' && <VolunteerDossier volunteer={selectedVolunteer} incident={mockIncidents.find(i => i.id === selectedVolunteer?.assignedTo)} />}
+            {activeDossier === 'incident' && <AIReasoning incident={selectedIncident} volunteers={mockVolunteers} onVolunteerClick={handleVolunteerClick} />}
+            {activeDossier === 'volunteer' && <VolunteerDossier volunteer={selectedVolunteer} incident={mockIncidents.find(i => i.id === selectedVolunteer?.assignedTo)} onIncidentClick={handleIncidentClick} />}
           </div>
         </aside>
 

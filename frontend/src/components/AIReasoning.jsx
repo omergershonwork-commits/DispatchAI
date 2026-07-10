@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Cpu, CheckCircle2, Clock, MapPin, Activity, ShieldAlert, Navigation } from 'lucide-react';
 import './AIReasoning.css';
 
-const AIReasoning = ({ incident, volunteers }) => {
+const AIReasoning = ({ incident, volunteers, onVolunteerClick }) => {
   const [visibleSteps, setVisibleSteps] = useState(0);
 
   const steps = [
@@ -127,7 +127,13 @@ const AIReasoning = ({ incident, volunteers }) => {
                 }
 
                 return (
-                  <div key={vol.id} className="mini-volunteer-card" style={{ borderColor: statusColor }}>
+                  <div 
+                    key={vol.id} 
+                    className="mini-volunteer-card" 
+                    style={{ borderColor: statusColor, cursor: 'pointer' }}
+                    onClick={() => onVolunteerClick && onVolunteerClick(vol, true)}
+                    title="Click to view volunteer dossier"
+                  >
                     {statusIcon}
                     <div className="vol-details">
                       <span className="vol-name">{vol.name}</span>

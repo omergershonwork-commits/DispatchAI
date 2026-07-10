@@ -2,7 +2,7 @@ import React from 'react';
 import { Activity, Battery, CheckCircle2, MapPin, Clock, ShieldAlert, Award, User, Stethoscope, Car, Navigation } from 'lucide-react';
 import './VolunteerDossier.css';
 
-const VolunteerDossier = ({ volunteer, incident }) => {
+const VolunteerDossier = ({ volunteer, incident, onIncidentClick }) => {
   if (!volunteer) {
     return (
       <div className="ai-empty-state">
@@ -119,7 +119,12 @@ const VolunteerDossier = ({ volunteer, incident }) => {
         {incident && (
           <div className="dossier-section">
             <div className="section-title">Current Assignment</div>
-            <div className="assignment-card">
+            <div 
+              className="assignment-card"
+              onClick={() => onIncidentClick && onIncidentClick(incident, true)}
+              style={{ cursor: 'pointer' }}
+              title="Click to view incident in left panel"
+            >
               <ShieldAlert size={20} color="var(--tactical-red)" />
               <div className="assignment-details">
                 <div className="assignment-id">Incident #{incident.id} - {incident.type.toUpperCase()}</div>

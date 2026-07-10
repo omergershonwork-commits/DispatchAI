@@ -276,6 +276,12 @@
   background-color: var(--tactical-blue);
 }
 
+.volunteer-marker.selected {
+  border: 2px solid white;
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+  z-index: 1000 !important;
+}
+
 /* Clean Minimal Routing Line */
 .animated-route-line {
   stroke-dasharray: 4 8; /* Sharp, spaced dashes */

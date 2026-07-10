@@ -28,17 +28,25 @@ const ZoomTracker = ({ onZoomChange }) => {
   return null;
 };
 
-// Component to fly to the selected volunteer
-const FlyToVolunteer = ({ selectedVolunteer }) => {
+// Component to handle camera movements
+const MapCameraHandler = ({ selectedVolunteer, selectedIncident, leftTab }) => {
   const map = useMap();
   useEffect(() => {
-    if (selectedVolunteer) {
+    if (leftTab === 'incidents' && selectedVolunteer && selectedIncident) {
+      const bounds = L.latLngBounds([selectedVolunteer.position, selectedIncident.position]);
+      map.flyToBounds(bounds, { padding: [50, 50], duration: 1.5 });
+    } else if (leftTab === 'forces' && selectedVolunteer) {
       map.flyTo(selectedVolunteer.position, 16, {
         duration: 1.5,
         easeLinearity: 0.25,
       });
+    } else if (leftTab === 'incidents' && selectedIncident) {
+      map.flyTo(selectedIncident.position, 16, {
+        duration: 1.5,
+        easeLinearity: 0.25,
+      });
     }
-  }, [selectedVolunteer, map]);
+  }, [selectedVolunteer, selectedIncident, leftTab, map]);
   return null;
 };
 
@@ -68,20 +76,22 @@ const createEmergencyIcon = (severity, IconComponent, zoom) => {
 };
 
 // Create custom Volunteer Icon with dynamic sizing
-const createVolunteerIcon = (statusClass, zoom) => {
+const createVolunteerIcon = (statusClass, zoom, isSelected) => {
   let size = 12;
   if (zoom <= 11) size = 4;
   else if (zoom <= 13) size = 8;
+  
+  if (isSelected) size *= 1.5; // Make the selected marker larger
 
   return L.divIcon({
     className: 'custom-icon-wrapper',
-    html: `<div class="volunteer-marker ${statusClass}" style="width: ${size}px; height: ${size}px;"></div>`,
+    html: `<div class="volunteer-marker ${statusClass} ${isSelected ? 'selected' : ''}" style="width: ${size}px; height: ${size}px;"></div>`,
     iconSize: [size, size],
     iconAnchor: [size/2, size/2],
   });
 };
 
-const MapComponent = ({ isLeftOpen, isRightOpen, incidents = [], volunteers = [], selectedVolunteer, onVolunteerClick, onIncidentClick }) => {
+const MapComponent = ({ isLeftOpen, isRightOpen, incidents = [], volunteers = [], selectedVolunteer, selectedIncident, leftTab, onVolunteerClick, onIncidentClick }) => {
   const [zoomLevel, setZoomLevel] = useState(14);
   const centerPosition = [32.0653, 34.7750]; // Slightly adjusted for better view of all incidents
 
@@ -94,7 +104,7 @@ const MapComponent = ({ isLeftOpen, isRightOpen, incidents = [], volunteers = []
     >
       <MapResizer isLeftOpen={isLeftOpen} isRightOpen={isRightOpen} />
       <ZoomTracker onZoomChange={setZoomLevel} />
-      <FlyToVolunteer selectedVolunteer={selectedVolunteer} />
+      <MapCameraHandler selectedVolunteer={selectedVolunteer} selectedIncident={selectedIncident} leftTab={leftTab} />
       <TileLayer
         url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
@@ -119,17 +129,13 @@ const MapComponent = ({ isLeftOpen, isRightOpen, incidents = [], volunteers = []
         <Marker 
           key={`vol-${vol.id}`}
           position={vol.position} 
-          icon={createVolunteerIcon(vol.status, zoomLevel)}
+          icon={createVolunteerIcon(vol.status, zoomLevel, selectedVolunteer?.id === vol.id)}
           eventHandlers={{
             click: () => {
               if (onVolunteerClick) onVolunteerClick(vol);
             }
           }}
-        >
-          <Popup className="tactical-popup" minWidth={250} closeButton={false}>
-            <VolunteerCard volunteer={vol} />
-          </Popup>
-        </Marker>
+        />
       ))}
 
       {/* Render Animated Route Lines for dispatched volunteers */}
