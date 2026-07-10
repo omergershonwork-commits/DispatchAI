@@ -1,19 +1,19 @@
 :root {
-  /* Color Palette - Dark Matter / Neon */
-  --bg-dark: #121212; /* Deep dark to match the map's water/background */
-  --bg-panel: #1a1b1e; /* Slightly lighter for sidebars and panels */
-  --bg-card: #25262b; /* Slightly lighter for cards inside panels */
+  /* Tactical Palette */
+  --bg-dark: #0a0a0c; /* Near black */
+  --bg-panel: #121316; /* Very dark grey for panels */
+  --bg-card: #1a1c20; /* Slightly lighter for elements */
   
-  --text-primary: #f8fafc;
-  --text-secondary: #9ca3af;
+  --text-primary: #e5e7eb;
+  --text-secondary: #8b949e;
   
-  --neon-cyan: #06b6d4; /* Main UI Accents & Branding */
-  --neon-green: #22c55e; /* Available Volunteers / Success */
-  --neon-orange: #f97316; /* High Severity Emergencies */
-  --neon-red: #ef4444; /* Critical Emergencies */
-  --neon-yellow: #eab308; /* Medium Severity */
+  --tactical-blue: #60a5fa; /* Clear bright blue */
+  --tactical-green: #4ade80; /* Clear bright green */
+  --tactical-red: #f87171; /* Clear bright red */
+  --tactical-orange: #fb923c; /* Clear bright orange */
+  --tactical-yellow: #facc15; /* Clear bright yellow */
   
-  --border-color: #2c2e33;
+  --border-color: #2d3139;
 }
 
 * {
@@ -24,27 +24,23 @@
 
 body {
   margin: 0;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  font-family: 'IBM Plex Sans', -apple-system, sans-serif;
   background-color: var(--bg-dark);
   color: var(--text-primary);
-  overflow: hidden; /* Prevents the whole page from scrolling, we only want specific panels to scroll */
+  overflow: hidden;
 }
 
-/* Custom Scrollbar for a premium look */
+/* Sharp Scrollbars */
 ::-webkit-scrollbar {
-  width: 8px;
+  width: 4px;
 }
 ::-webkit-scrollbar-track {
   background: var(--bg-dark);
 }
 ::-webkit-scrollbar-thumb {
   background: var(--border-color);
-  border-radius: 4px;
+  border-radius: 0; /* Sharp edges */
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--neon-cyan);
+  background: var(--tactical-blue);
 }
