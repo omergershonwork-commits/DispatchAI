@@ -1,0 +1,62 @@
+{
+  "default_scenario": "general_assistance",
+  "fallback_confidence_threshold": 0.7,
+  "scenarios": [
+    {
+      "name": "medical_urgent",
+      "description": "Urgent medical help, injury, ambulance-like support, first aid, or life-safety support.",
+      "keywords": ["medical", "injury", "injured", "bleeding", "doctor", "first aid", "ambulance", "medic", "emergency"],
+      "urgencies": ["high", "critical"],
+      "weights": {
+        "location": 0.25,
+        "availability": 0.20,
+        "skill_match": 0.35,
+        "response_time": 0.15,
+        "reliability": 0.05
+      },
+      "preferred_skills": ["medical", "first_aid", "paramedic", "doctor"]
+    },
+    {
+      "name": "transport",
+      "description": "Transport, pickup, evacuation ride, delivery by vehicle, or moving people or supplies.",
+      "keywords": ["transport", "ride", "pickup", "car", "drive", "evacuation", "evacuate", "deliver", "delivery"],
+      "urgencies": ["medium", "high", "critical"],
+      "weights": {
+        "location": 0.35,
+        "availability": 0.20,
+        "skill_match": 0.20,
+        "response_time": 0.20,
+        "reliability": 0.05
+      },
+      "preferred_skills": ["driver", "transport", "vehicle", "evacuation"]
+    },
+    {
+      "name": "supplies",
+      "description": "Food, water, medicine, equipment, charging, shelter supplies, or basic logistics.",
+      "keywords": ["food", "water", "medicine", "medication", "supplies", "equipment", "charger", "blanket", "shelter"],
+      "urgencies": ["low", "medium", "high"],
+      "weights": {
+        "location": 0.30,
+        "availability": 0.25,
+        "skill_match": 0.15,
+        "response_time": 0.20,
+        "reliability": 0.10
+      },
+      "preferred_skills": ["logistics", "supplies", "delivery", "food", "medicine"]
+    },
+    {
+      "name": "general_assistance",
+      "description": "General help when no stronger scenario matches.",
+      "keywords": ["help", "assist", "support", "urgent", "problem"],
+      "urgencies": ["unknown", "low", "medium", "high", "critical"],
+      "weights": {
+        "location": 0.30,
+        "availability": 0.25,
+        "skill_match": 0.20,
+        "response_time": 0.15,
+        "reliability": 0.10
+      },
+      "preferred_skills": []
+    }
+  ]
+}
