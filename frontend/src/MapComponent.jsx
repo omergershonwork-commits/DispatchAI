@@ -29,12 +29,12 @@ const ZoomTracker = ({ onZoomChange }) => {
 
 // Create custom Emergency Icon with dynamic sizing
 const createEmergencyIcon = (severity, IconComponent, zoom) => {
-  let size = 28;
-  let iconSize = 16;
+  let size = 32;
+  let iconSize = 18;
   
   if (zoom <= 11) { size = 12; iconSize = 0; }
   else if (zoom === 12) { size = 16; iconSize = 0; }
-  else if (zoom === 13) { size = 22; iconSize = 12; }
+  else if (zoom === 13) { size = 24; iconSize = 14; }
 
   const markerHtml = iconSize > 0 
     ? renderToString(
