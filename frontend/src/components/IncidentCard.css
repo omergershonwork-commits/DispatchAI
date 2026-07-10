@@ -45,14 +45,14 @@
 }
 
 .card-time {
-  font-family: 'Rajdhani', sans-serif;
+  font-family: 'Outfit', sans-serif;
   font-size: 0.75rem;
   color: var(--text-secondary);
   flex-grow: 1;
 }
 
 .severity-badge {
-  font-family: 'Rajdhani', sans-serif;
+  font-family: 'Outfit', sans-serif;
   font-size: 0.65rem;
   font-weight: 600;
   padding: 2px 8px;

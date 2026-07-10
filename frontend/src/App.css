@@ -45,7 +45,7 @@
   gap: 8px;
   font-size: 0.85rem;
   color: var(--text-secondary);
-  font-family: 'Rajdhani', sans-serif;
+  font-family: 'Outfit', sans-serif;
   text-transform: uppercase;
   letter-spacing: 1px;
 }
@@ -132,7 +132,7 @@
 .panel-header {
   padding: 12px 20px;
   border-bottom: 1px solid var(--border-color);
-  font-family: 'Rajdhani', sans-serif;
+  font-family: 'Outfit', sans-serif;
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 1.5px;
@@ -178,7 +178,7 @@
   cursor: pointer;
   z-index: 400;
   border-radius: 0; /* Sharp */
-  font-family: 'Rajdhani', sans-serif;
+  font-family: 'Outfit', sans-serif;
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 1px;

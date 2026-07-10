@@ -41,7 +41,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-family: 'Rajdhani', sans-serif;
+  font-family: 'Outfit', sans-serif;
   font-size: 0.85rem;
   font-weight: 500;
   padding: 4px 12px;
@@ -62,7 +62,7 @@
   align-items: center;
   gap: 8px;
   color: var(--text-secondary);
-  font-family: 'Rajdhani', sans-serif;
+  font-family: 'Outfit', sans-serif;
   font-size: 0.8rem;
   text-transform: uppercase;
   letter-spacing: 1px;
