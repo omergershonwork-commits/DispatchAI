@@ -262,6 +262,16 @@
 .emergency-marker.medium { --bg-fallback: var(--tactical-yellow); }
 .emergency-marker.low { --bg-fallback: var(--tactical-blue); }
 
+.emergency-marker.selected {
+  z-index: 1000 !important;
+  box-shadow: 0 0 15px var(--bg-fallback);
+}
+
+.emergency-marker.selected::after {
+  animation: radarSweep 1s ease-out infinite; /* faster pulse when selected */
+  border-width: 3px;
+}
+
 /* Volunteer Marker */
 .volunteer-marker {
   background-color: var(--tactical-green);

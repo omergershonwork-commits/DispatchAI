@@ -29,7 +29,7 @@ const ZoomTracker = ({ onZoomChange }) => {
 };
 
 // Component to handle camera movements
-const MapCameraHandler = ({ selectedVolunteer, selectedIncident, leftTab }) => {
+const MapCameraHandler = ({ selectedVolunteer, selectedIncident, leftTab, volunteers }) => {
   const map = useMap();
   useEffect(() => {
     if (leftTab === 'incidents' && selectedVolunteer && selectedIncident) {
@@ -41,17 +41,23 @@ const MapCameraHandler = ({ selectedVolunteer, selectedIncident, leftTab }) => {
         easeLinearity: 0.25,
       });
     } else if (leftTab === 'incidents' && selectedIncident) {
-      map.flyTo(selectedIncident.position, 16, {
-        duration: 1.5,
-        easeLinearity: 0.25,
-      });
+      const assignedVols = volunteers.filter(v => v.assignedTo === selectedIncident.id);
+      if (assignedVols.length > 0) {
+        const bounds = L.latLngBounds([selectedIncident.position, ...assignedVols.map(v => v.position)]);
+        map.flyToBounds(bounds, { padding: [80, 80], duration: 1.5 });
+      } else {
+        map.flyTo(selectedIncident.position, 15, {
+          duration: 1.5,
+          easeLinearity: 0.25,
+        });
+      }
     }
-  }, [selectedVolunteer, selectedIncident, leftTab, map]);
+  }, [selectedVolunteer, selectedIncident, leftTab, map, volunteers]);
   return null;
 };
 
 // Create custom Emergency Icon with dynamic sizing
-const createEmergencyIcon = (severity, IconComponent, zoom) => {
+const createEmergencyIcon = (severity, IconComponent, zoom, isSelected) => {
   let size = 32;
   let iconSize = 18;
   
@@ -59,13 +65,18 @@ const createEmergencyIcon = (severity, IconComponent, zoom) => {
   else if (zoom === 12) { size = 16; iconSize = 0; }
   else if (zoom === 13) { size = 24; iconSize = 14; }
 
+  if (isSelected) {
+    size *= 1.4;
+    if (iconSize > 0) iconSize *= 1.4;
+  }
+
   const markerHtml = iconSize > 0 
     ? renderToString(
-        <div className={`emergency-marker ${severity}`} style={{ width: `${size}px`, height: `${size}px` }}>
+        <div className={`emergency-marker ${severity} ${isSelected ? 'selected' : ''}`} style={{ width: `${size}px`, height: `${size}px` }}>
           <IconComponent size={iconSize} strokeWidth={1.5} color="white" />
         </div>
       )
-    : `<div class="emergency-marker ${severity}" style="width: ${size}px; height: ${size}px;"></div>`;
+    : `<div class="emergency-marker ${severity} ${isSelected ? 'selected' : ''}" style="width: ${size}px; height: ${size}px;"></div>`;
 
   return L.divIcon({
     className: 'custom-icon-wrapper',
@@ -104,7 +115,7 @@ const MapComponent = ({ isLeftOpen, isRightOpen, incidents = [], volunteers = []
     >
       <MapResizer isLeftOpen={isLeftOpen} isRightOpen={isRightOpen} />
       <ZoomTracker onZoomChange={setZoomLevel} />
-      <MapCameraHandler selectedVolunteer={selectedVolunteer} selectedIncident={selectedIncident} leftTab={leftTab} />
+      <MapCameraHandler selectedVolunteer={selectedVolunteer} selectedIncident={selectedIncident} leftTab={leftTab} volunteers={volunteers} />
       <TileLayer
         url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
@@ -115,7 +126,7 @@ const MapComponent = ({ isLeftOpen, isRightOpen, incidents = [], volunteers = []
         <Marker
           key={`inc-${inc.id}`}
           position={inc.position}
-          icon={createEmergencyIcon(inc.severity, inc.type === 'fire' ? AlertTriangle : inc.type === 'medical' ? Activity : ShieldAlert, zoomLevel)}
+          icon={createEmergencyIcon(inc.severity, inc.type === 'fire' ? AlertTriangle : inc.type === 'medical' ? Activity : ShieldAlert, zoomLevel, selectedIncident?.id === inc.id)}
           eventHandlers={{
             click: () => {
               if (onIncidentClick) onIncidentClick(inc);
