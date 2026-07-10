@@ -154,13 +154,20 @@ const MapComponent = ({ isLeftOpen, isRightOpen, incidents = [], volunteers = []
         const targetIncident = incidents.find(i => i.id === vol.assignedTo);
         if (!targetIncident) return null;
         return (
-          <Polyline
-            key={`route-${vol.id}`}
-            positions={[vol.position, targetIncident.position]}
-            color="var(--tactical-blue)"
-            weight={2}
-            className="animated-route-line"
-          />
+          <React.Fragment key={`route-${vol.id}`}>
+            <Polyline
+              positions={[vol.position, targetIncident.position]}
+              color="var(--tactical-blue)"
+              weight={2}
+              className="route-line-bg"
+            />
+            <Polyline
+              positions={[vol.position, targetIncident.position]}
+              color="var(--tactical-blue)"
+              weight={2}
+              className="animated-route-line"
+            />
+          </React.Fragment>
         );
       })}
     </MapContainer>

@@ -293,12 +293,17 @@
 }
 
 /* Clean Minimal Routing Line */
+.route-line-bg {
+  opacity: 0.15;
+}
+
 .animated-route-line {
-  stroke-dasharray: 4 8; /* Sharp, spaced dashes */
-  animation: flowLine 2s linear infinite; /* Slower, elegant flow */
-  opacity: 0.85;
+  stroke-dasharray: 10 20; /* smooth dashed flow */
+  animation: flowLine 1.5s linear infinite;
+  opacity: 0.9;
+  filter: drop-shadow(0 0 5px var(--tactical-blue));
 }
 
 @keyframes flowLine {
-  to { stroke-dashoffset: -24; }
+  to { stroke-dashoffset: -30; }
 }
