@@ -14,7 +14,6 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  font-family: 'IBM Plex Mono', monospace;
 }
 
 .ai-header {
@@ -127,22 +126,26 @@
 .dossier-content {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
   overflow-y: auto;
   flex: 1;
+  padding: 24px 16px 24px 24px; /* extra top and left padding */
 }
 
 .dossier-section {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .section-title {
-  font-size: 0.75rem;
-  color: var(--text-secondary);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
   text-transform: uppercase;
   letter-spacing: 1px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 4px;
 }
 
 .raw-message {
@@ -169,30 +172,149 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.intel-tag.type { color: var(--tactical-orange); border-color: rgba(251, 146, 60, 0.3); }
-.intel-tag.severity { color: var(--tactical-red); border-color: rgba(248, 113, 113, 0.3); }
-.intel-tag.confidence { color: var(--tactical-green); border-color: rgba(74, 222, 128, 0.3); }
-.intel-tag.location { color: var(--tactical-blue); border-color: rgba(96, 165, 250, 0.3); }
+/* Intel Grid & Synthesis */
+.ai-synthesis-text {
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.02);
+  padding: 12px;
+  border-radius: 6px;
+  border-left: 2px solid var(--tactical-blue);
+}
+
+.intel-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.intel-box {
+  display: flex;
+  flex-direction: column;
+  background-color: var(--bg-card);
+  padding: 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+}
+
+.intel-label {
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.intel-value {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.text-red { color: var(--tactical-red); }
+.text-orange { color: var(--tactical-orange); }
+.text-green { color: var(--tactical-green); }
+.text-blue { color: var(--tactical-blue); }
+
+/* Timeline */
+.timeline-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 8px 0;
+}
+
+.timeline-item {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  position: relative;
+}
+
+.timeline-item:not(:last-child)::before {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 14px;
+  bottom: -16px;
+  width: 2px;
+  background-color: var(--border-color);
+}
+
+.timeline-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--border-color);
+  margin-top: 4px;
+  z-index: 1;
+}
+
+.timeline-item.active .timeline-dot {
+  background-color: var(--tactical-blue);
+  box-shadow: 0 0 8px rgba(96, 165, 250, 0.5);
+}
+
+.timeline-item.active .timeline-text {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.timeline-time {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  width: 50px;
+  flex-shrink: 0;
+}
+
+.timeline-text {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+/* Assigned Forces */
+.assigned-forces-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
 
 .mini-volunteer-card {
   display: flex;
   align-items: center;
   gap: 12px;
-  background-color: rgba(74, 222, 128, 0.05);
-  border: 1px solid rgba(74, 222, 128, 0.2);
-  padding: 8px 12px;
+  background-color: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-color);
+  padding: 10px 12px;
   border-radius: 6px;
   font-size: 0.85rem;
+  transition: all 0.2s ease;
 }
 
-.icon-green {
-  color: var(--tactical-green);
+.vol-details {
+  display: flex;
+  flex-direction: column;
+}
+
+.vol-name {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.vol-status-text {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .vol-distance {
   margin-left: auto;
   color: var(--text-secondary);
-  font-size: 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 500;
 }
 
 .no-forces {

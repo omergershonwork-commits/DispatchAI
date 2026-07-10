@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Cpu, CheckCircle2 } from 'lucide-react';
+import { Cpu, CheckCircle2, Clock, MapPin, Activity, ShieldAlert, Navigation } from 'lucide-react';
 import './AIReasoning.css';
 
 const AIReasoning = ({ incident, volunteers }) => {
   const [visibleSteps, setVisibleSteps] = useState(0);
 
   const steps = [
-    "Receiving WhatsApp Text",
     "Running Qwen-2.5 7B NER...",
     "Extracting Location (Geo-coding)",
     "Assessing Severity (Critical)",
@@ -17,7 +16,6 @@ const AIReasoning = ({ incident, volunteers }) => {
   // Find dispatched volunteers for this incident
   const assignedVols = volunteers?.filter(v => v.assignedTo === incident?.id) || [];
 
-  // Simulate Qwen "thinking" by revealing steps over time
   useEffect(() => {
     if (incident) {
       setVisibleSteps(0);
@@ -29,8 +27,7 @@ const AIReasoning = ({ incident, volunteers }) => {
           }
           return prev + 1;
         });
-      }, 600); // Reveal a new step every 600ms
-      
+      }, 600);
       return () => clearInterval(timer);
     }
   }, [incident]);
@@ -46,42 +43,100 @@ const AIReasoning = ({ incident, volunteers }) => {
 
   return (
     <div className="ai-reasoning-container">
-      <div className="ai-header">
-        <Cpu size={18} className="ai-icon" />
-        <span>Incident Dossier #{incident.id}</span>
-      </div>
-
       <div className="dossier-content">
         
-        {/* Section 1: Raw Message */}
+        {/* RAW MESSAGE */}
         <div className="dossier-section">
-          <div className="section-title">RAW MESSAGE</div>
+          <div className="section-title">Incoming Distress Signal</div>
           <div className="raw-message">"{incident.message}"</div>
         </div>
 
-        {/* Section 2: AI Intel */}
+        {/* AI SYNTHESIS */}
         <div className="dossier-section">
-          <div className="section-title">AI EXTRACTED INTEL</div>
-          <div className="intel-tags">
-            <span className="intel-tag type">{incident.type.toUpperCase()}</span>
-            <span className="intel-tag severity">{incident.severity.toUpperCase()}</span>
-            <span className="intel-tag location">📍 {incident.locationName}</span>
-            <span className="intel-tag confidence">🟢 98% Confidence</span>
+          <div className="section-title">AI Synthesis</div>
+          <div className="ai-synthesis-text">
+            {incident.aiSynthesis}
           </div>
         </div>
 
-        {/* Section 3: Dispatched Forces */}
+        {/* INTEL GRID */}
         <div className="dossier-section">
-          <div className="section-title">DISPATCHED FORCES</div>
+          <div className="section-title">Extracted Intel</div>
+          <div className="intel-grid">
+            <div className="intel-box">
+              <span className="intel-label">Site Access</span>
+              <span className="intel-value text-orange">
+                {incident.siteAccessibility}
+              </span>
+            </div>
+            <div className="intel-box">
+              <span className="intel-label">AI Confidence</span>
+              <span className="intel-value text-green">{incident.aiConfidence}%</span>
+            </div>
+            <div className="intel-box">
+              <span className="intel-label">Est. Casualties</span>
+              <span className={`intel-value ${incident.casualties !== 'None' ? 'text-red' : 'text-green'}`}>
+                {incident.casualties}
+              </span>
+            </div>
+            <div className="intel-box">
+              <span className="intel-label">Required Gear</span>
+              <span className="intel-value text-blue" style={{ fontSize: '0.75rem', lineHeight: '1.2' }}>
+                {incident.requiredEquipment?.join(', ')}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* TIMELINE */}
+        <div className="dossier-section">
+          <div className="section-title">Event Timeline</div>
+          <div className="timeline-container">
+            {incident.timeline?.map((item, idx) => (
+              <div key={idx} className={`timeline-item ${item.active ? 'active' : ''}`}>
+                <div className="timeline-dot"></div>
+                <div className="timeline-time">{item.time}</div>
+                <div className="timeline-text">{item.event}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* DISPATCHED FORCES */}
+        <div className="dossier-section">
+          <div className="section-title">Assigned Forces Status</div>
           {assignedVols.length > 0 ? (
             <div className="assigned-forces-list">
-              {assignedVols.map(vol => (
-                <div key={vol.id} className="mini-volunteer-card">
-                  <CheckCircle2 size={14} className="icon-green" />
-                  <span>{vol.name}</span>
-                  <span className="vol-distance">{vol.distance}</span>
-                </div>
-              ))}
+              {assignedVols.map(vol => {
+                let statusColor = 'var(--text-secondary)';
+                let statusIcon = <CheckCircle2 size={14} color={statusColor} />;
+                let statusText = 'Unknown';
+                
+                if (vol.status === 'on_scene') {
+                  statusColor = 'var(--tactical-blue)';
+                  statusIcon = <MapPin size={14} color={statusColor} />;
+                  statusText = 'On Scene';
+                } else if (vol.status === 'en_route') {
+                  statusColor = 'var(--tactical-green)';
+                  statusIcon = <Navigation size={14} color={statusColor} />;
+                  statusText = 'En Route';
+                } else if (vol.status === 'waiting') {
+                  statusColor = 'var(--tactical-orange)';
+                  statusIcon = <Clock size={14} color={statusColor} />;
+                  statusText = 'Waiting Reply';
+                }
+
+                return (
+                  <div key={vol.id} className="mini-volunteer-card" style={{ borderColor: statusColor }}>
+                    {statusIcon}
+                    <div className="vol-details">
+                      <span className="vol-name">{vol.name}</span>
+                      <span className="vol-status-text" style={{ color: statusColor }}>{statusText}</span>
+                    </div>
+                    <span className="vol-distance">{vol.distance}</span>
+                  </div>
+                );
+              })}
             </div>
           ) : (
             <div className="no-forces">Waiting for AI assignment...</div>
@@ -101,29 +156,30 @@ const AIReasoning = ({ incident, volunteers }) => {
               <span className="prompt">{'>'}</span> Processing Event...
             </div>
           
-          <div className="processing-steps">
-            {steps.map((step, index) => (
-              <div 
-                key={index} 
-                className={`step-item ${index < visibleSteps ? 'visible' : ''}`}
-              >
-                {index < visibleSteps ? (
-                   <CheckCircle2 size={14} color="var(--neon-green)" />
-                ) : (
-                   <div className="step-placeholder"></div>
-                )}
-                <span>{step}</span>
-              </div>
-            ))}
-          </div>
+            <div className="processing-steps">
+              {steps.map((step, index) => (
+                <div 
+                  key={index} 
+                  className={`step-item ${index < visibleSteps ? 'visible' : ''}`}
+                >
+                  {index < visibleSteps ? (
+                     <CheckCircle2 size={14} color="var(--neon-green)" />
+                  ) : (
+                     <div className="step-placeholder"></div>
+                  )}
+                  <span>{step}</span>
+                </div>
+              ))}
+            </div>
 
-          {visibleSteps >= steps.length && (
-             <div className="log-line result fade-in">
-               <span className="prompt">{'>'}</span> ACTION: Dispatched Volunteer #101 to {incident.locationName}.
-             </div>
-          )}
+            {visibleSteps >= steps.length && (
+               <div className="log-line result fade-in">
+                 <span className="prompt">{'>'}</span> ACTION: Dispatched {assignedVols.length} Volunteers to {incident.locationName}.
+               </div>
+            )}
+          </div>
         </div>
-        </div>
+
       </div>
     </div>
   );
