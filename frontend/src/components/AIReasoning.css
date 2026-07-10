@@ -122,3 +122,81 @@
   from { opacity: 0; }
   to { opacity: 1; }
 }
+
+/* Dossier Styles */
+.dossier-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.dossier-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.section-title {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.raw-message {
+  background-color: rgba(255, 255, 255, 0.03);
+  padding: 12px;
+  border-radius: 6px;
+  border-left: 2px solid var(--border-color);
+  font-style: italic;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+}
+
+.intel-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.intel-tag {
+  font-size: 0.75rem;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background-color: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.intel-tag.type { color: var(--tactical-orange); border-color: rgba(251, 146, 60, 0.3); }
+.intel-tag.severity { color: var(--tactical-red); border-color: rgba(248, 113, 113, 0.3); }
+.intel-tag.confidence { color: var(--tactical-green); border-color: rgba(74, 222, 128, 0.3); }
+.intel-tag.location { color: var(--tactical-blue); border-color: rgba(96, 165, 250, 0.3); }
+
+.mini-volunteer-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background-color: rgba(74, 222, 128, 0.05);
+  border: 1px solid rgba(74, 222, 128, 0.2);
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+.icon-green {
+  color: var(--tactical-green);
+}
+
+.vol-distance {
+  margin-left: auto;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+}
+
+.no-forces {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  font-style: italic;
+}

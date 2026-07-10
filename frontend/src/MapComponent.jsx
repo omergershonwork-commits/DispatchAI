@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Polyline, useMap, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Polyline, useMap, useMapEvents, Popup } from 'react-leaflet';
+import VolunteerCard from './components/VolunteerCard';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { renderToString } from 'react-dom/server';
@@ -95,11 +96,15 @@ const MapComponent = ({ isLeftOpen, isRightOpen, incidents = [], volunteers = []
 
       {/* Render Volunteers */}
       {volunteers.map(vol => (
-        <Marker
+        <Marker 
           key={`vol-${vol.id}`}
-          position={vol.position}
+          position={vol.position} 
           icon={createVolunteerIcon(vol.status, zoomLevel)}
-        />
+        >
+          <Popup className="tactical-popup" minWidth={250} closeButton={false}>
+            <VolunteerCard volunteer={vol} />
+          </Popup>
+        </Marker>
       ))}
 
       {/* Render Animated Route Lines for dispatched volunteers */}

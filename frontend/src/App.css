@@ -59,6 +59,43 @@
   overflow: hidden;
 }
 
+/* Navigation Rail (Tactical Shell) */
+.nav-rail {
+  width: 64px;
+  background-color: #12141a;
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 16px;
+  gap: 16px;
+  z-index: 600;
+  flex-shrink: 0;
+}
+
+.nav-item {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.nav-item:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+}
+
+.nav-item.active {
+  background-color: rgba(96, 165, 250, 0.15);
+  color: var(--tactical-blue);
+  box-shadow: inset 3px 0 0 var(--tactical-blue);
+}
+
 /* Sidebars Base Style */
 .sidebar-left, .sidebar-right {
   width: 380px;
@@ -121,6 +158,7 @@
   width: 380px;
 }
 
+
 /* Floating open buttons */
 .open-sidebar-btn {
   position: absolute;
@@ -165,6 +203,23 @@
 .custom-icon-wrapper {
   background: transparent;
   border: none;
+}
+
+/* Tactical Leaflet Popup */
+.tactical-popup .leaflet-popup-content-wrapper {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+}
+
+.tactical-popup .leaflet-popup-content {
+  margin: 0;
+  width: auto !important;
+}
+
+.tactical-popup .leaflet-popup-tip-container {
+  display: none;
 }
 
 /* Radar Sweep Animation for Emergencies */
