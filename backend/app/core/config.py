@@ -29,7 +29,13 @@ QWEN_EXTRA_HEADERS_JSON = os.getenv("QWEN_EXTRA_HEADERS_JSON", "")
 """Optional JSON object of additional headers for Qwen requests."""
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-"""Telegram bot token used for sending replies. Must not be committed."""
+"""Legacy Telegram bot token. Prefer source-specific token variables."""
+
+TELEGRAM_INCIDENT_BOT_TOKEN = os.getenv("TELEGRAM_INCIDENT_BOT_TOKEN", TELEGRAM_BOT_TOKEN)
+"""Telegram incident-report bot token used for sender replies."""
+
+TELEGRAM_VOLUNTEER_BOT_TOKEN = os.getenv("TELEGRAM_VOLUNTEER_BOT_TOKEN", "")
+"""Telegram volunteer-management bot token used for volunteer messages."""
 
 TELEGRAM_API_BASE_URL = os.getenv("TELEGRAM_API_BASE_URL", "https://api.telegram.org")
 """Base URL for the Telegram Bot API."""
@@ -58,7 +64,15 @@ class Settings:
     )
     telegram_bot_token: str = field(
         default=TELEGRAM_BOT_TOKEN,
-        metadata={"description": "Telegram bot token used for sending replies."},
+        metadata={"description": "Legacy Telegram bot token."},
+    )
+    telegram_incident_bot_token: str = field(
+        default=TELEGRAM_INCIDENT_BOT_TOKEN,
+        metadata={"description": "Telegram incident bot token used for sender replies."},
+    )
+    telegram_volunteer_bot_token: str = field(
+        default=TELEGRAM_VOLUNTEER_BOT_TOKEN,
+        metadata={"description": "Telegram volunteer bot token used for volunteer messages."},
     )
     telegram_api_base_url: str = field(
         default=TELEGRAM_API_BASE_URL,

@@ -34,6 +34,9 @@ Goal: Receive Telegram messages, process with Qwen LLM, and parse responses.
 - [x] BE-008: Add automatic Qwen request headers for local and remote inference.
 - [x] BE-009a: Send Telegram bot replies after webhook extraction.
 - [x] BE-009b: Persist Telegram incidents and pending conversation state.
+- [x] BE-010a: Add volunteer Telegram bot registration and dispatch lifecycle state.
 
 **Verification gate:**
-- [ ] Send a real Telegram bot message and verify the backend replies in Telegram and persists the incident.
+- [ ] Send a real incident Telegram bot message and verify the backend replies in Telegram and persists the incident.
+- [ ] Send `/register` to the volunteer Telegram bot and verify the volunteer is persisted.
+- [ ] Send `done` to the volunteer Telegram bot after a dispatch assignment and verify the dispatch is marked done.

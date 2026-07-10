@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.db.session import get_db
 from app.schemas.incident import IncidentExtractionResult
 from app.schemas.telegram import TelegramWebhookAccepted, TelegramWebhookUpdate
@@ -40,9 +41,9 @@ def get_incident_persistence_service(db: Session = Depends(get_db)) -> IncidentP
 
 
 def get_telegram_bot_client() -> TelegramBotClient:
-    """Return the Telegram Bot API client used for sending replies."""
+    """Return the Telegram Bot API client used for incident bot replies."""
 
-    return TelegramBotClient()
+    return TelegramBotClient(bot_token=settings.telegram_incident_bot_token)
 
 
 @router.post(
