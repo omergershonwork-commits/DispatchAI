@@ -1,0 +1,6 @@
+feat(frontend): scaffold React+Vite UI with Map and Dark Theme
+
+- Initialized React + Vite application
+- Set up CartoDB Dark Matter map via react-leaflet
+- Configured Navy/Neon custom color palette
+- Implemented 3-column collapsible sidebar layout with auto-resizing map

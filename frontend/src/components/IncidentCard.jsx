@@ -1,12 +1,12 @@
 import React from 'react';
-import { Flame, ShieldAlert, HeartPulse, MapPin } from 'lucide-react';
+import { AlertTriangle, ShieldAlert, Activity, MapPin } from 'lucide-react';
 import './IncidentCard.css';
 
 const getIcon = (type) => {
   switch (type) {
-    case 'fire': return <Flame size={20} />;
-    case 'medical': return <HeartPulse size={20} />;
-    default: return <ShieldAlert size={20} />;
+    case 'fire': return <AlertTriangle size={18} strokeWidth={1.5} />;
+    case 'medical': return <Activity size={18} strokeWidth={1.5} />;
+    default: return <ShieldAlert size={18} strokeWidth={1.5} />;
   }
 };
 
@@ -25,7 +25,7 @@ const IncidentCard = ({ incident, onClick, isSelected }) => {
         <p className="message-text">"{incident.message}"</p>
       </div>
       <div className="card-footer">
-        <MapPin size={14} />
+        <MapPin size={14} strokeWidth={1.5} />
         <span>{incident.locationName}</span>
       </div>
     </div>

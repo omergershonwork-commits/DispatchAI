@@ -14,16 +14,16 @@
   align-items: center;
   padding: 0 20px;
   justify-content: space-between;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   z-index: 1000;
 }
 
 .topbar-title {
-  font-size: 1.5rem;
-  font-weight: bold;
-  color: var(--neon-cyan);
-  text-shadow: 0 0 8px rgba(6, 182, 212, 0.4);
-  letter-spacing: 1px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--tactical-blue);
+  letter-spacing: 2px;
+  text-transform: uppercase;
 }
 
 .topbar-stats {
@@ -35,19 +35,21 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   color: var(--text-secondary);
+  font-family: 'IBM Plex Mono', monospace;
+  text-transform: uppercase;
+  letter-spacing: 1px;
 }
 
 .stat-value {
   color: var(--text-primary);
-  font-weight: bold;
-  font-size: 1.2rem;
+  font-weight: 600;
+  font-size: 1rem;
 }
 
 .stat-value.green {
-  color: var(--neon-green);
-  text-shadow: 0 0 8px rgba(34, 197, 94, 0.4);
+  color: var(--tactical-green);
 }
 
 /* Main Layout Area */
@@ -59,15 +61,20 @@
 
 /* Sidebars Base Style */
 .sidebar-left, .sidebar-right {
-  width: 380px; /* Slightly wider for comfortable reading */
+  width: 380px;
   background-color: var(--bg-panel);
   display: flex;
   flex-direction: column;
   z-index: 500;
-  box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
-  transition: width 0.3s ease;
-  overflow: hidden; /* Crucial: prevent content from keeping the sidebar wide */
+  border-right: 1px solid var(--border-color);
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
   flex-shrink: 0;
+}
+
+.sidebar-right {
+  border-right: none;
+  border-left: 1px solid var(--border-color);
 }
 
 .sidebar-left.collapsed, .sidebar-right.collapsed {
@@ -77,23 +84,16 @@
   border: none;
 }
 
-.sidebar-left {
-  border-right: 1px solid var(--border-color);
-}
-
-.sidebar-right {
-  border-left: 1px solid var(--border-color);
-}
-
 .panel-header {
-  padding: 15px 20px;
+  padding: 12px 20px;
   border-bottom: 1px solid var(--border-color);
-  font-weight: bold;
+  font-family: 'IBM Plex Mono', monospace;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 1.5px;
-  font-size: 0.85rem;
-  color: var(--neon-cyan);
-  background-color: rgba(0, 0, 0, 0.2); /* Slight darkening for header */
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  background-color: var(--bg-dark);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -105,65 +105,61 @@
   border: none;
   color: var(--text-secondary);
   cursor: pointer;
-  font-size: 1.2rem;
+  font-size: 1rem;
   padding: 0 5px;
   transition: color 0.2s;
 }
 
 .toggle-btn:hover {
-  color: var(--neon-cyan);
+  color: var(--tactical-blue);
 }
 
 .panel-content {
   padding: 20px;
   overflow-y: auto;
   flex: 1;
-  width: 380px; /* Keep content size fixed during animation */
+  width: 380px;
 }
 
-/* Floating open buttons when sidebar is collapsed */
+/* Floating open buttons */
 .open-sidebar-btn {
   position: absolute;
   top: 80px;
-  background-color: var(--bg-panel);
-  color: var(--neon-cyan);
+  background-color: var(--bg-dark);
+  color: var(--tactical-blue);
   border: 1px solid var(--border-color);
-  padding: 10px 15px;
+  padding: 8px 12px;
   cursor: pointer;
   z-index: 400;
-  border-radius: 4px;
-  box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-  font-weight: bold;
-  transition: all 0.2s;
+  border-radius: 0; /* Sharp */
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  transition: background-color 0.2s;
 }
 
 .open-sidebar-btn:hover {
-  background-color: var(--bg-card);
+  background-color: var(--bg-panel);
 }
 
-.open-sidebar-btn.left {
-  left: 20px;
-}
-
-.open-sidebar-btn.right {
-  right: 20px;
-}
+.open-sidebar-btn.left { left: 20px; }
+.open-sidebar-btn.right { right: 20px; }
 
 /* Center Map Container */
 .map-container {
   flex: 1;
-  min-width: 0; /* Ensures the flex item can shrink/grow properly */
+  min-width: 0;
   background-color: var(--bg-dark);
   position: relative;
   display: flex;
   justify-content: center;
   align-items: center;
-  color: var(--text-secondary);
   z-index: 1;
 }
 
 /* =========================================
-   Map Markers & Animations
+   Map Markers & Animations (Tactical)
    ========================================= */
 
 .custom-icon-wrapper {
@@ -171,66 +167,59 @@
   border: none;
 }
 
-/* Breathing Halo Animation for Emergencies */
-@keyframes breathe {
-  0% { box-shadow: 0 0 0 0 rgba(var(--marker-rgb), 0.7); }
-  70% { box-shadow: 0 0 0 20px rgba(var(--marker-rgb), 0); }
-  100% { box-shadow: 0 0 0 0 rgba(var(--marker-rgb), 0); }
+/* Radar Sweep Animation for Emergencies */
+@keyframes radarSweep {
+  0% { transform: scale(0.5); opacity: 1; border-width: 2px; }
+  100% { transform: scale(2); opacity: 0; border-width: 1px; }
 }
 
 .emergency-marker {
-  border-radius: 50%;
+  position: relative;
   display: flex;
   justify-content: center;
   align-items: center;
-  color: white;
-  animation: breathe 2s infinite;
-  border: 2px solid white;
+  color: var(--bg-dark);
   background-color: var(--bg-fallback);
+  width: 28px;
+  height: 28px;
+  border-radius: 50%; /* Circle shape */
 }
 
-.emergency-marker.critical {
-  --marker-rgb: 239, 68, 68; /* neon-red */
-  --bg-fallback: var(--neon-red);
+.emergency-marker::after {
+  content: '';
+  position: absolute;
+  top: -2px; left: -2px; right: -2px; bottom: -2px;
+  border: 2px solid var(--bg-fallback);
+  border-radius: 50%; /* Circle shape */
+  animation: radarSweep 1.5s ease-out infinite;
 }
 
-.emergency-marker.high {
-  --marker-rgb: 249, 115, 22; /* neon-orange */
-  --bg-fallback: var(--neon-orange);
-}
-
-.emergency-marker.medium {
-  --marker-rgb: 234, 179, 8; /* neon-yellow */
-  --bg-fallback: var(--neon-yellow);
-}
-
-.emergency-marker.low {
-  --marker-rgb: 6, 182, 212; /* neon-cyan */
-  --bg-fallback: var(--neon-cyan);
-}
+.emergency-marker.critical { --bg-fallback: var(--tactical-red); }
+.emergency-marker.high { --bg-fallback: var(--tactical-orange); }
+.emergency-marker.medium { --bg-fallback: var(--tactical-yellow); }
+.emergency-marker.low { --bg-fallback: var(--tactical-blue); }
 
 /* Volunteer Marker */
 .volunteer-marker {
-  background-color: var(--neon-green);
-  border-radius: 50%;
-  border: 2px solid white;
-  box-shadow: 0 0 8px var(--neon-green);
+  background-color: var(--tactical-green);
+  border: 1px solid var(--bg-dark);
+  width: 12px;
+  height: 12px;
+  border-radius: 50%; /* Circle shape */
   transition: all 0.3s;
 }
 
 .volunteer-marker.dispatched {
-  background-color: var(--neon-cyan);
-  box-shadow: 0 0 12px var(--neon-cyan);
+  background-color: var(--tactical-blue);
 }
 
-/* Animated Dashed Routing Line */
+/* Clean Minimal Routing Line */
 .animated-route-line {
-  stroke-dasharray: 12 12;
-  animation: flowLine 1s linear infinite;
+  stroke-dasharray: 4 8; /* Sharp, spaced dashes */
+  animation: flowLine 2s linear infinite; /* Slower, elegant flow */
+  opacity: 0.85;
 }
 
 @keyframes flowLine {
-  to {
-    stroke-dashoffset: -24;
-  }
+  to { stroke-dashoffset: -24; }
 }

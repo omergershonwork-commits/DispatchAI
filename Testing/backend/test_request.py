@@ -1,7 +1,7 @@
 import requests
 import json
 
-url = "http://localhost:8050/api/v1/webhook"
+url = "https://rotten-cobras-dream.loca.lt/api/v1/webhook"
 
 payload = {
     "sender": "+972501234567",

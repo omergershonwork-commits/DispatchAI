@@ -14,49 +14,51 @@
   display: flex;
   flex-direction: column;
   height: 100%;
+  font-family: 'IBM Plex Mono', monospace;
 }
 
 .ai-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: var(--neon-cyan);
-  font-weight: bold;
-  margin-bottom: 15px;
-  font-size: 0.9rem;
-  letter-spacing: 0.5px;
+  color: var(--tactical-blue);
+  font-weight: 500;
+  margin-bottom: 12px;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
 }
 
 .terminal-window {
-  background-color: #0d1117; /* GitHub dark dim */
+  background-color: var(--bg-dark);
   border: 1px solid var(--border-color);
-  border-radius: 6px;
+  border-radius: 0;
   overflow: hidden;
-  font-family: 'Fira Code', 'Courier New', Courier, monospace;
+  flex: 1;
 }
 
 .terminal-header {
-  background-color: #161b22;
-  padding: 8px 12px;
+  background-color: var(--bg-card);
+  padding: 6px 12px;
   display: flex;
   gap: 6px;
   border-bottom: 1px solid var(--border-color);
 }
 
 .dot {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
 }
 
-.dot.red { background-color: #ff5f56; }
-.dot.yellow { background-color: #ffbd2e; }
-.dot.green { background-color: #27c93f; }
+.dot.red { background-color: var(--tactical-red); }
+.dot.yellow { background-color: var(--tactical-orange); }
+.dot.green { background-color: var(--tactical-green); }
 
 .terminal-body {
   padding: 15px;
-  font-size: 0.85rem;
-  color: #c9d1d9;
+  font-size: 0.75rem;
+  color: var(--text-primary);
 }
 
 .log-line {
@@ -65,13 +67,13 @@
 }
 
 .prompt {
-  color: var(--neon-cyan);
+  color: var(--tactical-blue);
   margin-right: 8px;
-  font-weight: bold;
+  font-weight: 600;
 }
 
 .text-input {
-  color: #8b949e;
+  color: var(--text-secondary);
 }
 
 .processing-steps {
@@ -89,26 +91,26 @@
   gap: 8px;
   color: var(--text-secondary);
   opacity: 0;
-  transform: translateY(5px);
+  transform: translateX(-5px);
   transition: all 0.3s ease;
 }
 
 .step-item.visible {
   opacity: 1;
-  transform: translateY(0);
+  transform: translateX(0);
   color: var(--text-primary);
 }
 
 .step-placeholder {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
+  width: 12px;
+  height: 12px;
+  border-radius: 0;
   border: 1px solid var(--border-color);
 }
 
 .result {
-  color: var(--neon-green);
-  font-weight: bold;
+  color: var(--tactical-green);
+  font-weight: 600;
   margin-top: 20px;
 }
 

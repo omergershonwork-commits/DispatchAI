@@ -13,7 +13,7 @@ function App() {
   const [isLeftOpen, setIsLeftOpen] = useState(true);
   const [isRightOpen, setIsRightOpen] = useState(true);
 
-  // Mock Incidents Data
+  // Mock Incidents Data (With coordinates for the map)
   const mockIncidents = [
     {
       id: 1,
@@ -22,6 +22,7 @@ function App() {
       time: '14:32',
       message: 'Help! There is a huge fire in the Dizengoff Center tunnel, people are trapped!',
       locationName: 'Dizengoff Center, TLV',
+      position: [32.0779, 34.7744] // Dizengoff
     },
     {
       id: 2,
@@ -30,6 +31,7 @@ function App() {
       time: '14:30',
       message: 'Someone collapsed on the street, not breathing, send help fast.',
       locationName: 'Rothschild Blvd 22, TLV',
+      position: [32.0617, 34.7711] // Rothschild
     },
     {
       id: 3,
@@ -38,7 +40,23 @@ function App() {
       time: '14:15',
       message: 'Suspicious object found near the bus station, please check.',
       locationName: 'Central Bus Station, TLV',
+      position: [32.0560, 34.7795] // Central bus station
     }
+  ];
+
+  // Mock Volunteers Data (Some dispatched, some available)
+  const mockVolunteers = [
+    { id: 101, position: [32.0730, 34.7700], status: 'dispatched', assignedTo: 1 }, // Going to fire
+    { id: 102, position: [32.0650, 34.7650], status: 'available', assignedTo: null },
+    { id: 103, position: [32.0580, 34.7750], status: 'dispatched', assignedTo: 2 }, // Going to medical
+    { id: 104, position: [32.0800, 34.7850], status: 'available', assignedTo: null },
+    { id: 105, position: [32.0500, 34.7700], status: 'available', assignedTo: null },
+    { id: 106, position: [32.0880, 34.7750], status: 'available', assignedTo: null }, // Namir area
+    { id: 107, position: [32.0710, 34.7850], status: 'available', assignedTo: null }, // Sarona
+    { id: 108, position: [32.0590, 34.7600], status: 'available', assignedTo: null }, // Neve Tzedek
+    { id: 109, position: [32.0450, 34.7550], status: 'available', assignedTo: null }, // Jaffa
+    { id: 110, position: [32.0620, 34.7800], status: 'available', assignedTo: null }, // Montefiore
+    { id: 111, position: [32.0950, 34.7820], status: 'available', assignedTo: null }  // Yarkon Park
   ];
 
   const [selectedIncident, setSelectedIncident] = useState(null);
@@ -92,7 +110,12 @@ function App() {
 
         {/* Center: Live Map Area */}
         <main className="map-container">
-          <MapComponent isLeftOpen={isLeftOpen} isRightOpen={isRightOpen} />
+          <MapComponent 
+            isLeftOpen={isLeftOpen} 
+            isRightOpen={isRightOpen} 
+            incidents={mockIncidents}
+            volunteers={mockVolunteers}
+          />
         </main>
 
         {!isRightOpen && (

@@ -3,7 +3,7 @@ import { MapContainer, TileLayer, Marker, Polyline, useMap } from 'react-leaflet
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { renderToString } from 'react-dom/server';
-import { Flame, ShieldAlert, Crosshair, HeartPulse } from 'lucide-react';
+import { AlertTriangle, ShieldAlert, Activity } from 'lucide-react';
 
 // Helper component to force Leaflet to recalculate its size
 const MapResizer = ({ isLeftOpen, isRightOpen }) => {
@@ -18,13 +18,16 @@ const MapResizer = ({ isLeftOpen, isRightOpen }) => {
 };
 
 // Create custom Emergency Icon using Lucide and our CSS classes
-const createEmergencyIcon = (severityClass, IconComponent) => {
-  const iconHtml = renderToString(<IconComponent size={20} color="white" />);
+const createEmergencyIcon = (severity, IconComponent) => {
   return L.divIcon({
-    className: 'custom-icon-wrapper', // Removes default Leaflet white square background
-    html: `<div class="emergency-marker ${severityClass}" style="width: 40px; height: 40px;">${iconHtml}</div>`,
-    iconSize: [40, 40],
-    iconAnchor: [20, 20],
+    className: 'custom-icon-wrapper',
+    html: renderToString(
+      <div className={`emergency-marker ${severity}`}>
+        <IconComponent size={16} strokeWidth={1.5} color="white" />
+      </div>
+    ),
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
   });
 };
 
@@ -38,29 +41,14 @@ const createVolunteerIcon = (statusClass) => {
   });
 };
 
-const MapComponent = ({ isLeftOpen, isRightOpen }) => {
+const MapComponent = ({ isLeftOpen, isRightOpen, incidents = [], volunteers = [] }) => {
   // Center of Tel Aviv
-  const centerPosition = [32.0853, 34.7818];
-
-  // --- MOCK DATA ---
-  // In Phase 4, we will fetch these from FastAPI
-  const mockEmergency = {
-    id: 1,
-    position: [32.0853, 34.7818],
-    type: 'fire',
-    severity: 'critical' // This applies the 'critical' CSS class (neon red breathing)
-  };
-
-  const mockVolunteer = {
-    id: 101,
-    position: [32.0700, 34.7700],
-    status: 'dispatched' // This applies the 'dispatched' CSS class (neon cyan solid)
-  };
+  const centerPosition = [32.0653, 34.7750]; // Slightly adjusted for better view of all incidents
 
   return (
     <MapContainer 
       center={centerPosition} 
-      zoom={13} 
+      zoom={14} 
       style={{ height: '100%', width: '100%' }}
       zoomControl={false}
     >
@@ -70,27 +58,38 @@ const MapComponent = ({ isLeftOpen, isRightOpen }) => {
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
       />
 
-      {/* Render the Active Emergency */}
-      <Marker 
-        position={mockEmergency.position} 
-        icon={createEmergencyIcon(mockEmergency.severity, Flame)}
-      />
-
-      {/* Render the Volunteer */}
-      <Marker 
-        position={mockVolunteer.position} 
-        icon={createVolunteerIcon(mockVolunteer.status)}
-      />
-
-      {/* Render Animated Route Line if volunteer is dispatched */}
-      {mockVolunteer.status === 'dispatched' && (
-        <Polyline 
-          positions={[mockVolunteer.position, mockEmergency.position]} 
-          color="var(--neon-cyan)" 
-          weight={3}
-          className="animated-route-line"
+      {/* Render Incidents */}
+      {incidents.map(inc => (
+        <Marker 
+          key={`inc-${inc.id}`}
+          position={inc.position} 
+          icon={createEmergencyIcon(inc.severity, inc.type === 'fire' ? AlertTriangle : inc.type === 'medical' ? Activity : ShieldAlert)}
         />
-      )}
+      ))}
+
+      {/* Render Volunteers */}
+      {volunteers.map(vol => (
+        <Marker 
+          key={`vol-${vol.id}`}
+          position={vol.position} 
+          icon={createVolunteerIcon(vol.status)}
+        />
+      ))}
+
+      {/* Render Animated Route Lines for dispatched volunteers */}
+      {volunteers.filter(v => v.status === 'dispatched' && v.assignedTo).map(vol => {
+        const targetIncident = incidents.find(i => i.id === vol.assignedTo);
+        if (!targetIncident) return null;
+        return (
+          <Polyline 
+            key={`route-${vol.id}`}
+            positions={[vol.position, targetIncident.position]} 
+            color="var(--tactical-blue)" 
+            weight={2}
+            className="animated-route-line"
+          />
+        );
+      })}
     </MapContainer>
   );
 };
