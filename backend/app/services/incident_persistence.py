@@ -24,19 +24,10 @@ class SourceIncidentContext:
     """Source-agnostic metadata for an inbound incident report."""
 
     source: str
-    """Inbound source name, such as telegram, whatsapp, sms, or web."""
-
     source_update_id: int | None
-    """Source-specific update identifier, when available."""
-
     source_message_id: int | None
-    """Source-specific message identifier, when available."""
-
     source_chat_id: int
-    """Source conversation identifier used to find pending incident drafts."""
-
     raw_text: str
-    """Raw user text that produced the extraction result."""
 
 
 @dataclass(frozen=True)
@@ -44,16 +35,9 @@ class IncidentPersistenceResult:
     """Outcome returned after creating or updating an incident."""
 
     incident_id: int
-    """Persisted incident identifier."""
-
     status: str
-    """Persisted incident status after the write."""
-
     created: bool
-    """Whether a new incident row was created."""
-
     updated: bool
-    """Whether an existing pending incident row was updated."""
 
 
 class IncidentPersistenceService:
@@ -63,6 +47,35 @@ class IncidentPersistenceService:
         """Create a persistence service bound to one SQLAlchemy session."""
 
         self.db = db
+
+    def build_extraction_text(self, source_context: SourceIncidentContext) -> str:
+        """Combine a follow-up message with the pending incident conversation context."""
+
+        try:
+            self._ensure_schema()
+            pending_incident = self._find_pending_incident(
+                source_context.source,
+                source_context.source_chat_id,
+            )
+        except SQLAlchemyError as exc:
+            self.db.rollback()
+            raise IncidentPersistenceError("Incident conversation lookup failed.") from exc
+
+        if pending_incident is None:
+            return source_context.raw_text
+
+        prior_needs = ", ".join(pending_incident.needs or []) or "unknown"
+        return (
+            "This is a follow-up message for an existing pending incident.\n"
+            f"Existing summary: {pending_incident.summary}\n"
+            f"Existing incident type: {pending_incident.incident_type or 'unknown'}\n"
+            f"Existing location: {pending_incident.location_text or 'unknown'}\n"
+            f"Existing urgency: {pending_incident.urgency}\n"
+            f"Existing needs: {prior_needs}\n"
+            f"Previous conversation: {pending_incident.raw_text}\n"
+            f"Latest sender message: {source_context.raw_text}\n"
+            "Merge the latest message with the existing incident. Preserve known facts and only replace them when the latest message clearly corrects them."
+        )
 
     def persist_incident(
         self,
@@ -188,9 +201,7 @@ class IncidentPersistenceService:
     def _status_from_extraction(self, extraction: IncidentExtractionResult) -> str:
         """Return the incident status implied by extraction completeness."""
 
-        if extraction.should_create_incident:
-            return READY_STATUS
-        return PENDING_STATUS
+        return READY_STATUS if extraction.should_create_incident else PENDING_STATUS
 
     def _has_required_fields(self, incident: Incident) -> bool:
         """Return whether the stored incident has enough details for dispatch."""
