@@ -23,7 +23,7 @@ SessionLocal = sessionmaker(
 
 
 def get_engine() -> Engine:
-    """Return the shared SQLAlchemy engine, creating it on first access."""
+    """Return the shared SQLAlchemy engine, creating and migrating it on first access."""
 
     global engine
     if engine is None:
@@ -32,6 +32,11 @@ def get_engine() -> Engine:
             pool_pre_ping=True,
         )
         SessionLocal.configure(bind=engine)
+
+        # Late import avoids a module cycle because schema_migrations imports Base.
+        from app.db.schema_migrations import ensure_runtime_schema
+
+        ensure_runtime_schema(engine)
     return engine
 
 
