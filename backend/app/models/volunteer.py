@@ -39,6 +39,11 @@ class Volunteer(Base):
     display_name: Mapped[str | None] = mapped_column(Text, nullable=True)
     phone_number: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True, index=True)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True, index=True)
+    location_source: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    location_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     gender: Mapped[str | None] = mapped_column(String(32), nullable=True)
     height_cm: Mapped[float | None] = mapped_column(Float, nullable=True)
     weight_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
