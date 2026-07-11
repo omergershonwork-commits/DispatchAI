@@ -80,44 +80,47 @@ def receive_volunteer_telegram_webhook(
         get_volunteer_auto_dispatch_service
     ),
 ) -> VolunteerWebhookAccepted:
-    """Process registration, GPS updates, offer decisions, and assignment progress."""
-
     message = update.message
     command_result: VolunteerCommandResult | None = None
     command_error: str | None = None
     telegram_reply_sent = False
     telegram_reply_error: str | None = None
+    service_db = getattr(volunteer_service, "db", None)
 
     if message and message.location is not None:
-        try:
-            volunteer = find_volunteer_by_chat(volunteer_service.db, message.chat.id)
-            if volunteer is None:
-                command_result = VolunteerCommandResult(
-                    None,
-                    None,
-                    None,
-                    "Register first with /register, then share your location.",
-                )
-            else:
-                volunteer.latitude = message.location.latitude
-                volunteer.longitude = message.location.longitude
-                volunteer.location_source = "telegram_gps"
-                volunteer.location_updated_at = utc_now()
-                volunteer.last_seen_at = utc_now()
-                metadata = dict(volunteer.metadata_json or {})
-                metadata["location_accuracy_m"] = message.location.horizontal_accuracy
-                volunteer.metadata_json = metadata
-                volunteer_service.db.commit()
-                command_result = VolunteerCommandResult(
-                    volunteer.id,
-                    volunteer.status,
-                    None,
-                    "Your current GPS location was updated. Dispatch distance limits will use this location.",
-                )
-        except SQLAlchemyError:
-            volunteer_service.db.rollback()
-            command_error = VOLUNTEER_COMMAND_UNAVAILABLE_ERROR
+        if service_db is None:
             command_result = VolunteerCommandResult(None, None, None, "Location could not be saved right now.")
+            command_error = VOLUNTEER_COMMAND_UNAVAILABLE_ERROR
+        else:
+            try:
+                volunteer = find_volunteer_by_chat(service_db, message.chat.id)
+                if volunteer is None:
+                    command_result = VolunteerCommandResult(
+                        None,
+                        None,
+                        None,
+                        "Register first with /register, then share your location.",
+                    )
+                else:
+                    volunteer.latitude = message.location.latitude
+                    volunteer.longitude = message.location.longitude
+                    volunteer.location_source = "telegram_gps"
+                    volunteer.location_updated_at = utc_now()
+                    volunteer.last_seen_at = utc_now()
+                    metadata = dict(volunteer.metadata_json or {})
+                    metadata["location_accuracy_m"] = message.location.horizontal_accuracy
+                    volunteer.metadata_json = metadata
+                    service_db.commit()
+                    command_result = VolunteerCommandResult(
+                        volunteer.id,
+                        volunteer.status,
+                        None,
+                        "Your current GPS location was updated. Dispatch distance limits will use this location.",
+                    )
+            except SQLAlchemyError:
+                service_db.rollback()
+                command_error = VOLUNTEER_COMMAND_UNAVAILABLE_ERROR
+                command_result = VolunteerCommandResult(None, None, None, "Location could not be saved right now.")
 
     elif message and message.text and message.text.strip():
         source_context = build_volunteer_source_context(update)
@@ -125,12 +128,13 @@ def receive_volunteer_telegram_webhook(
             command_result = lifecycle_service.process_progress_message(source_context)
             if command_result is None:
                 command_result = volunteer_service.process_message(source_context)
-            sync_volunteer_location_from_profile(
-                volunteer_service.db,
-                command_result,
-                geocoding_service,
-            )
-            sync_volunteer_dashboard_state(volunteer_service.db, command_result)
+            if service_db is not None:
+                sync_volunteer_location_from_profile(
+                    service_db,
+                    command_result,
+                    geocoding_service,
+                )
+                sync_volunteer_dashboard_state(service_db, command_result)
         except (VolunteerManagementError, DispatchLifecycleError, ValueError):
             command_error = VOLUNTEER_COMMAND_UNAVAILABLE_ERROR
             command_result = VolunteerCommandResult(
