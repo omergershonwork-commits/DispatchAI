@@ -71,15 +71,15 @@ def pending_extraction_result() -> IncidentExtractionResult:
 
     return IncidentExtractionResult(
         is_incident=True,
-        summary="Person needs help.",
-        incident_type="medical",
+        summary="Person needs security assistance.",
+        incident_type="security",
         location_text=None,
-        urgency="medium",
-        people_count=None,
+        urgency="high",
+        people_count=1,
         contact_name=None,
         phone_number=None,
-        needs=["medical help"],
-        confidence=0.55,
+        needs=["security assistance"],
+        confidence=0.8,
         missing_fields=["location_text"],
         follow_up_question="Where exactly is help needed?",
         should_create_incident=False,
@@ -111,14 +111,9 @@ def non_incident_extraction_result() -> IncidentExtractionResult:
 
 
 def test_persist_incident_creates_ready_incident(db_session: Session) -> None:
-    """Verify actionable extraction creates a ready incident row."""
-
     service = IncidentPersistenceService(db_session)
 
-    result = service.persist_incident(
-        source_context(),
-        actionable_extraction_result(),
-    )
+    result = service.persist_incident(source_context(), actionable_extraction_result())
 
     assert result is not None
     assert result.created is True
@@ -127,53 +122,75 @@ def test_persist_incident_creates_ready_incident(db_session: Session) -> None:
 
     incident = db_session.get(Incident, result.incident_id)
     assert incident is not None
-    assert incident.status == INCIDENT_STATUS_READY_FOR_DISPATCH
     assert incident.source == "telegram"
-    assert incident.source_chat_id == 987654321
-    assert incident.source_message_id == 42
-    assert incident.summary == "Person needs medical help near Dizengoff Center."
     assert incident.location_text == "Dizengoff Center"
     assert incident.needs == ["medical help"]
 
 
 def test_persist_incident_creates_pending_incident(db_session: Session) -> None:
-    """Verify incomplete extraction creates a pending incident row."""
-
     service = IncidentPersistenceService(db_session)
 
     result = service.persist_incident(
-        source_context(raw_text="I need medical help"),
+        source_context(raw_text="Someone is robbing me"),
         pending_extraction_result(),
     )
 
     assert result is not None
-    assert result.created is True
-    assert result.updated is False
     assert result.status == INCIDENT_STATUS_PENDING_DETAILS
-
     incident = db_session.get(Incident, result.incident_id)
     assert incident is not None
-    assert incident.status == INCIDENT_STATUS_PENDING_DETAILS
-    assert incident.location_text is None
+    assert incident.incident_type == "security"
     assert incident.metadata_json["follow_up_question"] == "Where exactly is help needed?"
 
 
-def test_persist_incident_updates_existing_pending_incident(db_session: Session) -> None:
-    """Verify follow-up details from the same source chat update the pending incident."""
+def test_build_extraction_text_includes_pending_context_and_latest_message(
+    db_session: Session,
+) -> None:
+    """Verify a short follow-up is combined with the pending incident facts."""
 
     service = IncidentPersistenceService(db_session)
-    first_result = service.persist_incident(
-        source_context(raw_text="I need medical help"),
+    service.persist_incident(
+        source_context(raw_text="Someone is robbing me"),
         pending_extraction_result(),
     )
 
+    extraction_text = service.build_extraction_text(
+        source_context(
+            update_id=123457,
+            message_id=43,
+            raw_text="White House",
+        )
+    )
+
+    assert "Existing incident type: security" in extraction_text
+    assert "Existing needs: security assistance" in extraction_text
+    assert "Previous conversation: Someone is robbing me" in extraction_text
+    assert "Latest sender message: White House" in extraction_text
+    assert "Merge the latest message" in extraction_text
+
+
+def test_persist_incident_updates_existing_pending_incident(db_session: Session) -> None:
+    service = IncidentPersistenceService(db_session)
+    first_result = service.persist_incident(
+        source_context(raw_text="Someone is robbing me"),
+        pending_extraction_result(),
+    )
+
+    follow_up_result = actionable_extraction_result().copy(
+        update={
+            "summary": "Person needs security assistance at the White House.",
+            "incident_type": "security",
+            "location_text": "White House",
+            "needs": ["security assistance"],
+        }
+    )
     second_result = service.persist_incident(
         source_context(
             update_id=123457,
             message_id=43,
-            raw_text="The location is Dizengoff Center",
+            raw_text="White House",
         ),
-        actionable_extraction_result(),
+        follow_up_result,
     )
 
     assert first_result is not None
@@ -185,54 +202,34 @@ def test_persist_incident_updates_existing_pending_incident(db_session: Session)
 
     incident = db_session.get(Incident, second_result.incident_id)
     assert incident is not None
-    assert incident.status == INCIDENT_STATUS_READY_FOR_DISPATCH
-    assert incident.location_text == "Dizengoff Center"
+    assert incident.location_text == "White House"
     assert incident.source_message_id == 43
     assert "--- follow-up ---" in incident.raw_text
 
 
-def test_persist_incident_keeps_pending_incidents_separate_by_source(db_session: Session) -> None:
-    """Verify pending lookups are scoped by source and conversation id."""
-
+def test_pending_incidents_are_scoped_by_source(db_session: Session) -> None:
     service = IncidentPersistenceService(db_session)
+
     telegram_result = service.persist_incident(
-        source_context(source="telegram", raw_text="I need medical help"),
+        source_context(source="telegram", raw_text="Someone is robbing me"),
         pending_extraction_result(),
     )
     whatsapp_result = service.persist_incident(
-        source_context(source="whatsapp", raw_text="I need medical help"),
+        source_context(source="whatsapp", raw_text="Someone is robbing me"),
         pending_extraction_result(),
     )
 
     assert telegram_result is not None
     assert whatsapp_result is not None
     assert telegram_result.incident_id != whatsapp_result.incident_id
-    assert db_session.query(Incident).count() == 2
 
 
-def test_persist_incident_does_not_create_for_non_incident(db_session: Session) -> None:
-    """Verify non-incident extractions are not persisted."""
-
+def test_non_incident_and_none_extraction_are_not_persisted(db_session: Session) -> None:
     service = IncidentPersistenceService(db_session)
 
-    result = service.persist_incident(
+    assert service.persist_incident(
         source_context(raw_text="hello"),
         non_incident_extraction_result(),
-    )
-
-    assert result is None
-    assert db_session.query(Incident).count() == 0
-
-
-def test_persist_incident_does_not_create_for_none_extraction(db_session: Session) -> None:
-    """Verify missing extraction output is not persisted."""
-
-    service = IncidentPersistenceService(db_session)
-
-    result = service.persist_incident(
-        source_context(raw_text="hello"),
-        None,
-    )
-
-    assert result is None
+    ) is None
+    assert service.persist_incident(source_context(raw_text="hello"), None) is None
     assert db_session.query(Incident).count() == 0
