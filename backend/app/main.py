@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI
 
+from app.api.dashboard import router as dashboard_router
 from app.api.dispatch import router as dispatch_router
 from app.api.health import router as health_router
 from app.api.telegram import router as telegram_router
@@ -64,6 +65,7 @@ def create_app() -> FastAPI:
     app.include_router(telegram_router)
     app.include_router(volunteer_telegram_router)
     app.include_router(dispatch_router)
+    app.include_router(dashboard_router)
     return app
 
 
