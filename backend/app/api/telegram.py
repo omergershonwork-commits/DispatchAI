@@ -5,6 +5,11 @@ from app.core.config import settings
 from app.db.session import get_db
 from app.schemas.incident import IncidentExtractionResult
 from app.schemas.telegram import TelegramWebhookAccepted, TelegramWebhookUpdate
+from app.services.incident_auto_dispatch import (
+    IncidentAutoDispatchError,
+    IncidentAutoDispatchResult,
+    IncidentAutoDispatchService,
+)
 from app.services.incident_extraction import IncidentExtractionError, IncidentExtractionService
 from app.services.incident_persistence import (
     IncidentPersistenceError,
@@ -32,6 +37,19 @@ def get_incident_persistence_service(db: Session = Depends(get_db)) -> IncidentP
     return IncidentPersistenceService(db)
 
 
+def get_incident_auto_dispatch_service(
+    db: Session = Depends(get_db),
+) -> IncidentAutoDispatchService | None:
+    """Return automatic dispatch support only when the volunteer bot is configured."""
+
+    if not settings.telegram_volunteer_bot_token.strip():
+        return None
+    return IncidentAutoDispatchService(
+        db,
+        TelegramBotClient(bot_token=settings.telegram_volunteer_bot_token),
+    )
+
+
 def get_telegram_bot_client() -> TelegramBotClient:
     return TelegramBotClient(bot_token=settings.telegram_incident_bot_token)
 
@@ -45,6 +63,7 @@ def receive_telegram_webhook(
     update: TelegramWebhookUpdate,
     extraction_service: IncidentExtractionService = Depends(get_incident_extraction_service),
     incident_persistence_service: IncidentPersistenceService = Depends(get_incident_persistence_service),
+    auto_dispatch_service: IncidentAutoDispatchService | None = Depends(get_incident_auto_dispatch_service),
     telegram_bot_client: TelegramBotClient = Depends(get_telegram_bot_client),
 ) -> TelegramWebhookAccepted:
     """Accept an incident Telegram update, preserve recent context, persist it, and reply."""
@@ -54,6 +73,7 @@ def receive_telegram_webhook(
     extraction_error: str | None = None
     persistence_result: IncidentPersistenceResult | None = None
     persistence_error: str | None = None
+    dispatch_result: IncidentAutoDispatchResult | None = None
     telegram_reply_sent = False
     telegram_reply_error: str | None = None
 
@@ -87,11 +107,24 @@ def receive_telegram_webhook(
                 except (IncidentPersistenceError, ValueError):
                     persistence_error = INCIDENT_PERSISTENCE_UNAVAILABLE_ERROR
 
+            if (
+                persistence_result is not None
+                and persistence_result.status == "ready_for_dispatch"
+                and auto_dispatch_service is not None
+            ):
+                try:
+                    dispatch_result = auto_dispatch_service.dispatch_ready_incident(
+                        persistence_result.incident_id
+                    )
+                except IncidentAutoDispatchError:
+                    dispatch_result = None
+
             reply_text = build_telegram_reply_text(
                 extraction,
                 extraction_error,
                 persistence_result,
                 persistence_error,
+                dispatch_result,
             )
 
         try:
@@ -147,6 +180,7 @@ def build_telegram_reply_text(
     extraction_error: str | None,
     persistence_result: IncidentPersistenceResult | None = None,
     persistence_error: str | None = None,
+    dispatch_result: IncidentAutoDispatchResult | None = None,
 ) -> str:
     """Build a calm user-facing reply without exposing backend workflow details."""
 
@@ -174,6 +208,21 @@ def build_telegram_reply_text(
             "Your report has been received. I need one more detail before it can be matched.\n"
             f"{extraction.follow_up_question}\n"
             "You can send /cancel to discard this unfinished report or /new to start over.\n"
+            "If there is immediate danger, contact local emergency services now."
+        )
+
+    if dispatch_result and dispatch_result.sent:
+        return (
+            "Your emergency report has been received and saved. "
+            "An available volunteer has been notified. "
+            "A responder has not yet confirmed arrival. "
+            "If there is immediate danger, contact local emergency services now."
+        )
+
+    if dispatch_result and dispatch_result.reason == "no_available_volunteer":
+        return (
+            "Your emergency report has been received and saved. "
+            "No available volunteer was found yet. "
             "If there is immediate danger, contact local emergency services now."
         )
 
