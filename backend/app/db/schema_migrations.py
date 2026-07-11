@@ -8,6 +8,9 @@ ADDITIVE_COLUMNS: Mapping[str, Mapping[str, str]] = {
     "incidents": {
         "title": "VARCHAR(160)",
         "casualties_text": "TEXT",
+        "latitude": "DOUBLE PRECISION",
+        "longitude": "DOUBLE PRECISION",
+        "location_source": "VARCHAR(32)",
     },
     "volunteers": {
         "phone_number": "VARCHAR(64)",
@@ -16,6 +19,10 @@ ADDITIVE_COLUMNS: Mapping[str, Mapping[str, str]] = {
         "weight_kg": "DOUBLE PRECISION",
         "trust_score": "DOUBLE PRECISION DEFAULT 0.5",
         "inventory": "JSON",
+        "latitude": "DOUBLE PRECISION",
+        "longitude": "DOUBLE PRECISION",
+        "location_source": "VARCHAR(32)",
+        "location_updated_at": "TIMESTAMP WITH TIME ZONE",
     },
 }
 
