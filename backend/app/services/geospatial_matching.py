@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.models.dispatch_recommendation import DispatchRecommendation
 from app.models.incident import Incident
 from app.models.volunteer import Volunteer
@@ -22,6 +23,9 @@ class GeospatialVolunteerMatchingService(VolunteerMatchingService):
         incident_id: int,
         limit: int = 3,
     ) -> DispatchRecommendationBatch:
+        if not settings.geocoding_enabled:
+            return super().recommend_for_incident(incident_id=incident_id, limit=limit)
+
         incident = self.db.get(Incident, incident_id)
         if incident is None:
             raise ValueError("Incident was not found.")
@@ -68,10 +72,12 @@ class GeospatialVolunteerMatchingService(VolunteerMatchingService):
         selected = eligible[:limit]
         selected_ids = {item[0].recommendation_id for item in selected}
 
-        self.db.query(DispatchRecommendation).filter(
-            DispatchRecommendation.incident_id == incident_id,
-            ~DispatchRecommendation.id.in_(selected_ids) if selected_ids else True,
-        ).delete(synchronize_session=False)
+        query = self.db.query(DispatchRecommendation).filter(
+            DispatchRecommendation.incident_id == incident_id
+        )
+        if selected_ids:
+            query = query.filter(~DispatchRecommendation.id.in_(selected_ids))
+        query.delete(synchronize_session=False)
 
         results: list[DispatchRecommendationResult] = []
         for rank, (recommendation, distance_km, adjusted_total) in enumerate(selected, start=1):
