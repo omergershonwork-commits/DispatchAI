@@ -30,6 +30,9 @@ class SourceIncidentContext:
     source_message_id: int | None
     source_chat_id: int
     raw_text: str
+    latitude: float | None = None
+    longitude: float | None = None
+    location_source: str | None = None
 
 
 @dataclass(frozen=True)
@@ -60,8 +63,14 @@ class IncidentPersistenceService:
             self.db.rollback()
             raise IncidentPersistenceError("Incident conversation lookup failed.") from exc
 
+        latest_message = source_context.raw_text
+        if source_context.latitude is not None and source_context.longitude is not None:
+            latest_message = (
+                f"{latest_message}\nSender shared GPS coordinates: "
+                f"{source_context.latitude:.6f}, {source_context.longitude:.6f}."
+            )
         if pending_incident is None:
-            return source_context.raw_text
+            return latest_message
 
         prior_needs = ", ".join(pending_incident.needs or []) or "unknown"
         return (
@@ -74,7 +83,7 @@ class IncidentPersistenceService:
             f"Existing affected-person details: {pending_incident.casualties_text or 'unknown'}\n"
             f"Existing needs: {prior_needs}\n"
             f"Previous conversation: {pending_incident.raw_text}\n"
-            f"Latest sender message: {source_context.raw_text}\n"
+            f"Latest sender message: {latest_message}\n"
             "Merge the latest message with the existing incident. Preserve known facts unless the latest message clearly corrects them."
         )
 
@@ -172,6 +181,9 @@ class IncidentPersistenceService:
             summary=extraction.summary,
             incident_type=extraction.incident_type,
             location_text=extraction.location_text,
+            latitude=source_context.latitude,
+            longitude=source_context.longitude,
+            location_source=source_context.location_source,
             urgency=extraction.urgency,
             casualties_text=extraction.casualties_text,
             people_count=extraction.people_count,
@@ -200,6 +212,10 @@ class IncidentPersistenceService:
         incident.summary = self._choose_text(extraction.summary, incident.summary) or incident.summary
         incident.incident_type = self._choose_text(extraction.incident_type, incident.incident_type)
         incident.location_text = self._choose_text(extraction.location_text, incident.location_text)
+        if source_context.latitude is not None and source_context.longitude is not None:
+            incident.latitude = source_context.latitude
+            incident.longitude = source_context.longitude
+            incident.location_source = source_context.location_source
         incident.urgency = self._choose_urgency(extraction.urgency, incident.urgency)
         incident.casualties_text = self._choose_text(extraction.casualties_text, incident.casualties_text)
         incident.people_count = extraction.people_count if extraction.people_count is not None else incident.people_count
