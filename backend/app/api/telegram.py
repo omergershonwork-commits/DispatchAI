@@ -64,7 +64,12 @@ def receive_telegram_webhook(
     if message and message.text and message.text.strip():
         source_context = build_telegram_source_context(update)
         try:
-            extraction_text = incident_persistence_service.build_extraction_text(source_context)
+            context_builder = getattr(incident_persistence_service, "build_extraction_text", None)
+            extraction_text = (
+                context_builder(source_context)
+                if callable(context_builder)
+                else source_context.raw_text
+            )
             extraction = extraction_service.extract_from_text(extraction_text)
         except (IncidentExtractionError, IncidentPersistenceError, QwenClientError, ValueError):
             extraction_error = EXTRACTION_UNAVAILABLE_ERROR
