@@ -88,7 +88,9 @@ def receive_volunteer_telegram_webhook(
             command_result = lifecycle_service.process_progress_message(source_context)
             if command_result is None:
                 command_result = volunteer_service.process_message(source_context)
-            sync_volunteer_dashboard_state(volunteer_service.db, command_result)
+            service_db = getattr(volunteer_service, "db", None)
+            if service_db is not None:
+                sync_volunteer_dashboard_state(service_db, command_result)
         except (VolunteerManagementError, DispatchLifecycleError, ValueError):
             command_error = VOLUNTEER_COMMAND_UNAVAILABLE_ERROR
             command_result = VolunteerCommandResult(
