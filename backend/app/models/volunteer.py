@@ -7,33 +7,22 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.session import Base
 
 VOLUNTEER_STATUS_AVAILABLE = "available"
-"""Volunteer is registered and can receive dispatch requests."""
-
+VOLUNTEER_STATUS_PENDING_RESPONSE = "pending_response"
 VOLUNTEER_STATUS_BUSY = "busy"
-"""Volunteer currently has an active dispatch request."""
-
 VOLUNTEER_STATUS_INACTIVE = "inactive"
-"""Volunteer is registered but should not receive dispatch requests."""
 
 DISPATCH_STATUS_SENT = "sent"
-"""Dispatch request was sent to a volunteer."""
-
+DISPATCH_STATUS_ACCEPTED = "accepted"
+DISPATCH_STATUS_DECLINED = "declined"
 DISPATCH_STATUS_DONE = "done"
-"""Volunteer marked the dispatch as completed."""
-
 DISPATCH_STATUS_CANCELLED = "cancelled"
-"""Dispatch request was cancelled before completion."""
 
 
 def utc_now() -> datetime:
-    """Return the current UTC time for timestamp defaults."""
-
     return datetime.now(UTC)
 
 
 class Volunteer(Base):
-    """Registered volunteer profile for dispatch communications."""
-
     __tablename__ = "volunteers"
     __table_args__ = (
         UniqueConstraint("source", "source_chat_id", name="uq_volunteers_source_chat_id"),
@@ -49,27 +38,14 @@ class Volunteer(Base):
     display_name: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
-    registered_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=utc_now,
-    )
-    last_seen_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=utc_now,
-    )
+    registered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=utc_now,
-        onupdate=utc_now,
+        DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now
     )
 
 
 class VolunteerDispatch(Base):
-    """Dispatch request sent to a volunteer."""
-
     __tablename__ = "volunteer_dispatches"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -77,21 +53,10 @@ class VolunteerDispatch(Base):
     incident_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     message_text: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, index=True, default=DISPATCH_STATUS_SENT)
-    sent_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=utc_now,
-    )
+    sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=utc_now,
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=utc_now,
-        onupdate=utc_now,
+        DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now
     )

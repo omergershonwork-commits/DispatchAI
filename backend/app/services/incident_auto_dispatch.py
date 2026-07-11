@@ -7,8 +7,12 @@ from app.models.dispatch_recommendation import (
     RECOMMENDATION_STATUS_DISPATCH_CREATED,
     DispatchRecommendation,
 )
-from app.models.incident import INCIDENT_STATUS_DISPATCHED, Incident
-from app.models.volunteer import DISPATCH_STATUS_SENT, VolunteerDispatch
+from app.models.incident import Incident
+from app.models.volunteer import (
+    DISPATCH_STATUS_ACCEPTED,
+    DISPATCH_STATUS_SENT,
+    VolunteerDispatch,
+)
 from app.services.dispatch_matching import DispatchMatchingError, VolunteerMatchingService
 from app.services.telegram_bot_client import TelegramBotClient, TelegramBotClientError
 from app.services.volunteer_management import VolunteerManagementError, VolunteerManagementService
@@ -20,8 +24,6 @@ class IncidentAutoDispatchError(RuntimeError):
 
 @dataclass(frozen=True)
 class IncidentAutoDispatchResult:
-    """Result of attempting to notify a matched volunteer."""
-
     incident_id: int
     volunteer_id: int | None
     dispatch_id: int | None
@@ -30,7 +32,7 @@ class IncidentAutoDispatchResult:
 
 
 class IncidentAutoDispatchService:
-    """Match a ready incident and notify the highest-ranked available volunteer."""
+    """Match a ready incident and send an offer to the next eligible volunteer."""
 
     def __init__(self, db: Session, telegram_bot_client: TelegramBotClient) -> None:
         self.db = db
@@ -39,32 +41,47 @@ class IncidentAutoDispatchService:
         self.volunteer_service = VolunteerManagementService(db)
 
     def dispatch_ready_incident(self, incident_id: int) -> IncidentAutoDispatchResult:
-        """Send one dispatch request for a ready incident, without duplicating active requests."""
+        """Send one offer without duplicating an open offer or accepted assignment."""
 
-        existing = (
+        existing_open = (
             self.db.query(VolunteerDispatch)
             .filter(
                 VolunteerDispatch.incident_id == incident_id,
-                VolunteerDispatch.status == DISPATCH_STATUS_SENT,
+                VolunteerDispatch.status.in_([DISPATCH_STATUS_SENT, DISPATCH_STATUS_ACCEPTED]),
             )
             .order_by(VolunteerDispatch.id.desc())
             .first()
         )
-        if existing is not None:
+        if existing_open is not None:
             return IncidentAutoDispatchResult(
                 incident_id=incident_id,
-                volunteer_id=existing.volunteer_id,
-                dispatch_id=existing.id,
+                volunteer_id=existing_open.volunteer_id,
+                dispatch_id=existing_open.id,
                 sent=False,
-                reason="already_dispatched",
+                reason="already_has_open_offer",
             )
 
+        previously_offered_ids = {
+            row[0]
+            for row in self.db.query(VolunteerDispatch.volunteer_id)
+            .filter(VolunteerDispatch.incident_id == incident_id)
+            .all()
+        }
+
         try:
-            batch = self.matching_service.recommend_for_incident(incident_id=incident_id, limit=1)
+            batch = self.matching_service.recommend_for_incident(incident_id=incident_id, limit=20)
         except (DispatchMatchingError, ValueError) as exc:
             raise IncidentAutoDispatchError("Volunteer matching failed.") from exc
 
-        if not batch.recommendations:
+        recommendation = next(
+            (
+                item
+                for item in batch.recommendations
+                if item.volunteer_id not in previously_offered_ids
+            ),
+            None,
+        )
+        if recommendation is None:
             return IncidentAutoDispatchResult(
                 incident_id=incident_id,
                 volunteer_id=None,
@@ -73,7 +90,6 @@ class IncidentAutoDispatchService:
                 reason="no_available_volunteer",
             )
 
-        recommendation = batch.recommendations[0]
         incident = self.db.get(Incident, incident_id)
         if incident is None:
             raise IncidentAutoDispatchError("Incident was not found after matching.")
@@ -89,7 +105,6 @@ class IncidentAutoDispatchService:
             recommendation_row = self.db.get(DispatchRecommendation, recommendation.recommendation_id)
             if recommendation_row is not None:
                 recommendation_row.status = RECOMMENDATION_STATUS_DISPATCH_CREATED
-            incident.status = INCIDENT_STATUS_DISPATCHED
             self.db.commit()
         except (VolunteerManagementError, TelegramBotClientError, SQLAlchemyError, ValueError) as exc:
             self.db.rollback()
@@ -100,18 +115,17 @@ class IncidentAutoDispatchService:
             volunteer_id=recommendation.volunteer_id,
             dispatch_id=dispatch.dispatch_id,
             sent=True,
-            reason="sent",
+            reason="offer_sent",
         )
 
     def _build_dispatch_message(self, incident: Incident) -> str:
-        """Build a concise volunteer assignment message from persisted incident data."""
-
         needs = ", ".join(incident.needs or []) or "general assistance"
         return (
-            "New volunteer dispatch request\n"
+            "New volunteer dispatch offer\n"
             f"Location: {incident.location_text or 'unknown'}\n"
             f"Summary: {incident.summary}\n"
             f"Urgency: {incident.urgency}\n"
-            f"Needs: {needs}\n"
-            "Reply done when the assignment is completed."
+            f"Needs: {needs}\n\n"
+            "Reply accept if you can respond, or decline if you cannot. "
+            "You will not receive another offer while this response is pending."
         )

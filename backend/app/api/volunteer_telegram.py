@@ -5,6 +5,7 @@ from app.core.config import settings
 from app.db.session import get_db
 from app.schemas.telegram import TelegramWebhookUpdate
 from app.schemas.volunteer import VolunteerWebhookAccepted
+from app.services.incident_auto_dispatch import IncidentAutoDispatchError, IncidentAutoDispatchService
 from app.services.telegram_bot_client import TelegramBotClient, TelegramBotClientError
 from app.services.volunteer_management import (
     VolunteerCommandResult,
@@ -14,25 +15,34 @@ from app.services.volunteer_management import (
 )
 
 VOLUNTEER_COMMAND_UNAVAILABLE_ERROR = "volunteer_command_unavailable"
-"""Safe response code returned when volunteer command processing fails."""
-
 VOLUNTEER_REPLY_UNAVAILABLE_ERROR = "volunteer_reply_unavailable"
-"""Safe response code returned when volunteer bot reply sending fails."""
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
-"""Router containing volunteer Telegram webhook endpoints."""
 
 
 def get_volunteer_management_service(db: Session = Depends(get_db)) -> VolunteerManagementService:
-    """Return the volunteer management service used by volunteer bot ingestion."""
-
     return VolunteerManagementService(db)
 
 
 def get_volunteer_telegram_bot_client() -> TelegramBotClient:
-    """Return the Telegram Bot API client used for volunteer bot replies."""
-
     return TelegramBotClient(bot_token=settings.telegram_volunteer_bot_token)
+
+
+def get_incident_telegram_bot_client() -> TelegramBotClient | None:
+    if not settings.telegram_incident_bot_token.strip():
+        return None
+    return TelegramBotClient(bot_token=settings.telegram_incident_bot_token)
+
+
+def get_volunteer_auto_dispatch_service(
+    db: Session = Depends(get_db),
+) -> IncidentAutoDispatchService | None:
+    if not settings.telegram_volunteer_bot_token.strip():
+        return None
+    return IncidentAutoDispatchService(
+        db,
+        TelegramBotClient(bot_token=settings.telegram_volunteer_bot_token),
+    )
 
 
 @router.post(
@@ -44,8 +54,12 @@ def receive_volunteer_telegram_webhook(
     update: TelegramWebhookUpdate,
     volunteer_service: VolunteerManagementService = Depends(get_volunteer_management_service),
     telegram_bot_client: TelegramBotClient = Depends(get_volunteer_telegram_bot_client),
+    incident_bot_client: TelegramBotClient | None = Depends(get_incident_telegram_bot_client),
+    auto_dispatch_service: IncidentAutoDispatchService | None = Depends(
+        get_volunteer_auto_dispatch_service
+    ),
 ) -> VolunteerWebhookAccepted:
-    """Accept a volunteer Telegram webhook update and process registration commands."""
+    """Process volunteer registration and dispatch lifecycle messages."""
 
     message = update.message
     command_result: VolunteerCommandResult | None = None
@@ -73,6 +87,31 @@ def receive_volunteer_telegram_webhook(
         except (TelegramBotClientError, ValueError):
             telegram_reply_error = VOLUNTEER_REPLY_UNAVAILABLE_ERROR
 
+        if (
+            command_result.dispatch_action == "accepted"
+            and command_result.reporter_source == "telegram"
+            and command_result.reporter_chat_id is not None
+            and command_result.reporter_reply_text
+            and incident_bot_client is not None
+        ):
+            try:
+                incident_bot_client.send_message(
+                    command_result.reporter_chat_id,
+                    command_result.reporter_reply_text,
+                )
+            except (TelegramBotClientError, ValueError):
+                pass
+
+        if (
+            command_result.dispatch_action == "declined"
+            and command_result.incident_id is not None
+            and auto_dispatch_service is not None
+        ):
+            try:
+                auto_dispatch_service.dispatch_ready_incident(command_result.incident_id)
+            except IncidentAutoDispatchError:
+                pass
+
     return VolunteerWebhookAccepted(
         update_id=update.update_id,
         message_id=message.message_id if message else None,
@@ -88,8 +127,6 @@ def receive_volunteer_telegram_webhook(
 
 
 def build_volunteer_source_context(update: TelegramWebhookUpdate) -> VolunteerSourceContext:
-    """Translate a Telegram volunteer update into generic volunteer source metadata."""
-
     message = update.message
     if message is None or message.text is None:
         raise ValueError("Telegram text message is required to build volunteer source context.")
