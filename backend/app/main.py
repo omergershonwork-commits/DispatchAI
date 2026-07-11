@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 
+from app.api.dispatch import router as dispatch_router
 from app.api.health import router as health_router
 from app.api.telegram import router as telegram_router
 from app.api.volunteer_telegram import router as volunteer_telegram_router
@@ -13,6 +14,7 @@ def create_app() -> FastAPI:
     app.include_router(health_router)
     app.include_router(telegram_router)
     app.include_router(volunteer_telegram_router)
+    app.include_router(dispatch_router)
     return app
 
 

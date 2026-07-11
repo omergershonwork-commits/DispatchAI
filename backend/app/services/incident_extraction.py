@@ -11,7 +11,6 @@ ACTIONABLE_REQUIRED_FIELDS: tuple[IncidentMissingField, ...] = (
     "incident_type",
     "needs",
 )
-"""Fields required before the backend should create an incident automatically."""
 
 FOLLOW_UP_FIELD_PRIORITY: tuple[IncidentMissingField, ...] = (
     "location_text",
@@ -21,7 +20,6 @@ FOLLOW_UP_FIELD_PRIORITY: tuple[IncidentMissingField, ...] = (
     "phone_number",
     "contact_name",
 )
-"""Field order used when composing concise follow-up questions."""
 
 FOLLOW_UP_QUESTIONS: dict[IncidentMissingField, str] = {
     "location_text": "Where exactly is help needed?",
@@ -31,13 +29,12 @@ FOLLOW_UP_QUESTIONS: dict[IncidentMissingField, str] = {
     "phone_number": "What phone number can responders use if Telegram disconnects?",
     "contact_name": "Who should responders ask for when they arrive?",
 }
-"""Field-specific questions used when important incident details are missing."""
 
 INCIDENT_EXTRACTION_RESPONSE_SCHEMA = """
 {
   "is_incident": true,
   "summary": "short summary of what happened",
-  "incident_type": "medical | rescue | food | shelter | transport | other | null",
+  "incident_type": "medical | rescue | security | fire | earthquake | flood | explosion | building_collapse | evacuation | food | shelter | transport | other | null",
   "location_text": "free-text location or null",
   "urgency": "unknown | low | medium | high | critical",
   "people_count": 1,
@@ -52,15 +49,26 @@ INCIDENT_EXTRACTION_RESPONSE_SCHEMA = """
   "rejection_reason": "reason if not an incident, otherwise null"
 }
 """.strip()
-"""JSON shape the model must return for incident extraction and triage decisions."""
 
 INCIDENT_EXTRACTION_INSTRUCTIONS = """
 You are an emergency-dispatch incident extraction engine.
-Extract structured incident details from one Telegram message.
+Extract structured incident details from one message or from a conversation context followed by a latest message.
 Return only valid JSON. Do not wrap the JSON in Markdown.
 Do not answer unrelated questions. This is not a chatbot.
 Do not invent missing facts. Use null for unknown optional values.
 Use confidence between 0.0 and 1.0.
+
+Treat descriptions of robbery, assault, threats, violence, fire, earthquake, collapse, explosion,
+flooding, trapped people, injury, evacuation, or urgent requests for rescue as incidents even when
+the sender does not explicitly say "I need help".
+Infer the concrete need from the event when it is clear. Examples: robbery implies immediate safety
+or security assistance; trapped after an earthquake implies rescue; visible injury implies medical help.
+Do not require the user to repeat an obvious need.
+
+When conversation context is supplied, merge the latest message with the known incident facts.
+Preserve known facts unless the latest message clearly corrects them. A short answer such as a place
+name may be the answer to the prior location question and must not be treated as a new unrelated report.
+
 If the message is not asking for help or reporting an incident, set is_incident to false,
 use urgency "unknown", keep needs empty, set should_create_incident to false,
 set should_ask_follow_up to false, and explain the rejection in rejection_reason.
@@ -68,7 +76,6 @@ If the message is an incident but important details are missing, set should_ask_
 and provide one short follow_up_question asking only for the most important missing details.
 If the incident has enough actionable detail to create an incident, set should_create_incident to true.
 """.strip()
-"""Prompt instructions sent before the Telegram message text."""
 
 
 class QwenGenerator(Protocol):
@@ -89,10 +96,9 @@ class IncidentExtractionService:
         """Create an extraction service with an injectable Qwen-compatible client."""
 
         self.qwen_client = qwen_client or QwenClient()
-        """Client used to generate model responses for extraction prompts."""
 
     def extract_from_text(self, message_text: str) -> IncidentExtractionResult:
-        """Extract validated incident details from a Telegram message text."""
+        """Extract validated incident details from message or conversation text."""
 
         if not message_text.strip():
             raise ValueError("Message text must not be empty.")
@@ -114,7 +120,7 @@ def build_incident_extraction_prompt(message_text: str) -> str:
 Return JSON with this exact shape:
 {INCIDENT_EXTRACTION_RESPONSE_SCHEMA}
 
-Telegram message:
+Message or conversation context:
 {message_text.strip()}
 """.strip()
 
@@ -174,8 +180,6 @@ def compute_missing_fields(result: IncidentExtractionResult) -> list[IncidentMis
     """Return important missing fields for an incident extraction result."""
 
     missing_fields: list[IncidentMissingField] = []
-    """Fields that need clarification before incident creation or better dispatch."""
-
     if not result.location_text:
         missing_fields.append("location_text")
     if not result.incident_type:
@@ -200,7 +204,6 @@ def has_actionable_incident_details(
 
     if not result.is_incident:
         return False
-
     return not any(field in missing_fields for field in ACTIONABLE_REQUIRED_FIELDS)
 
 
@@ -208,14 +211,10 @@ def build_follow_up_question(missing_fields: list[IncidentMissingField]) -> str 
     """Build one focused follow-up question for the most important missing details."""
 
     prioritized_missing_fields = [field for field in FOLLOW_UP_FIELD_PRIORITY if field in missing_fields]
-    """Missing fields ordered by operational importance."""
-
     if not prioritized_missing_fields:
         return None
 
     questions = [FOLLOW_UP_QUESTIONS[field] for field in prioritized_missing_fields[:2]]
-    """At most two concise questions to avoid overwhelming the sender."""
-
     return " ".join(questions)
 
 
@@ -223,26 +222,17 @@ def extract_json_object_text(response_text: str) -> str:
     """Return the JSON object text from a raw model response."""
 
     stripped_response = response_text.strip()
-    """Model response stripped of leading and trailing whitespace."""
-
     if not stripped_response:
         raise IncidentExtractionError("Incident extraction response was empty.")
-
     if stripped_response.startswith("```"):
         stripped_response = strip_markdown_code_fence(stripped_response)
-
     if stripped_response.startswith("{") and stripped_response.endswith("}"):
         return stripped_response
 
     object_start = stripped_response.find("{")
-    """Index of the first JSON object opening brace in the model response."""
-
     object_end = stripped_response.rfind("}")
-    """Index of the last JSON object closing brace in the model response."""
-
     if object_start == -1 or object_end == -1 or object_end <= object_start:
         raise IncidentExtractionError("Incident extraction response did not contain a JSON object.")
-
     return stripped_response[object_start : object_end + 1]
 
 
@@ -250,11 +240,8 @@ def strip_markdown_code_fence(response_text: str) -> str:
     """Remove a surrounding Markdown code fence from model output."""
 
     lines = response_text.splitlines()
-    """Model response split into lines so fence markers can be removed safely."""
-
     if lines and lines[0].startswith("```"):
         lines = lines[1:]
     if lines and lines[-1].startswith("```"):
         lines = lines[:-1]
-
     return "\n".join(lines).strip()

@@ -1,144 +1,97 @@
 # Volunteer Telegram bot
 
-The backend supports a second Telegram bot for volunteer management.
+The backend supports a second Telegram bot for volunteer onboarding and dispatch lifecycle management.
 
-## Purpose
+## Webhook and token
 
-The incident bot receives emergency reports from people who need help. The volunteer bot manages volunteers separately.
-
-The volunteer bot currently supports:
-
-- volunteer registration
-- volunteer status checks
-- volunteer inactive/stop command
-- marking the latest active dispatch as done
-- storing dispatch request lifecycle state
-
-## Runtime variables
-
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `TELEGRAM_INCIDENT_BOT_TOKEN` | `TELEGRAM_BOT_TOKEN` | Incident-report bot token used by `/webhooks/telegram`. |
-| `TELEGRAM_VOLUNTEER_BOT_TOKEN` | empty | Volunteer-management bot token used by `/webhooks/telegram/volunteers`. |
-| `TELEGRAM_API_BASE_URL` | `https://api.telegram.org` | Telegram Bot API base URL. |
-| `TELEGRAM_TIMEOUT_SECONDS` | `10` | HTTP timeout for Telegram send-message calls. |
-
-`TELEGRAM_BOT_TOKEN` remains as a legacy fallback for the incident bot.
-
-## Webhook paths
-
-| Bot | Webhook path |
+| Setting | Value |
 | --- | --- |
-| Incident bot | `/webhooks/telegram` |
-| Volunteer bot | `/webhooks/telegram/volunteers` |
+| Webhook path | `/webhooks/telegram/volunteers` |
+| Bot token | `TELEGRAM_VOLUNTEER_BOT_TOKEN` |
 
-Each Telegram bot must be registered with its own webhook URL.
+The incident bot remains separate at `/webhooks/telegram` and uses `TELEGRAM_INCIDENT_BOT_TOKEN`.
 
-## Volunteer commands
+## Registration flow
+
+`/start`, `/register`, `register`, or `join` starts or resumes a persisted seven-step registration wizard.
+
+The bot asks for:
+
+1. full name
+2. current city or service area
+3. comma-separated skills
+4. vehicle type
+5. maximum travel distance in kilometers
+6. phone number
+7. whether the volunteer is available now
+
+The draft is stored after every answer, so registration can continue after a restart or later message.
+
+Until all steps are complete, the volunteer remains `inactive` and cannot receive a dispatch request.
+
+Profile data used by matching is stored in `Volunteer.metadata_json`:
+
+```json
+{
+  "registration_step": null,
+  "registration_complete": true,
+  "service_areas": ["Tel Aviv"],
+  "location_text": "Tel Aviv",
+  "skills": ["medical", "rescue", "transport"],
+  "vehicle": "car",
+  "max_distance_km": 20,
+  "phone_number": "0501234567",
+  "available_now": true
+}
+```
+
+## Commands
 
 | Command | Behavior |
 | --- | --- |
-| `/start` | Register or reactivate the volunteer. |
-| `/register` | Register or reactivate the volunteer. |
-| `register` | Register or reactivate the volunteer. |
-| `/status` | Return current volunteer status. |
-| `status` | Return current volunteer status. |
-| `done` | Mark the latest active dispatch as complete. |
-| `/done` | Mark the latest active dispatch as complete. |
-| `/stop` | Mark volunteer inactive. |
-| `stop` | Mark volunteer inactive. |
-
-## Tables
-
-### `volunteers`
-
-Stores a registered volunteer profile:
-
-- `id`
-- `source`
-- `source_chat_id`
-- `source_user_id`
-- `source_username`
-- `first_name`
-- `last_name`
-- `display_name`
-- `status`
-- `metadata_json`
-- `registered_at`
-- `last_seen_at`
-- `updated_at`
-
-Volunteer rows are unique by `source` and `source_chat_id`.
-
-### `volunteer_dispatches`
-
-Stores dispatch requests sent to volunteers:
-
-- `id`
-- `volunteer_id`
-- `incident_id`
-- `message_text`
-- `status`
-- `sent_at`
-- `completed_at`
-- `metadata_json`
-- `created_at`
-- `updated_at`
+| `/register` or `/start` | Start/resume registration, or reactivate a complete profile. |
+| `/status` | Show the next missing registration step or the completed profile. |
+| `/cancel` | Pause an incomplete registration. |
+| `/stop` | Mark the volunteer inactive and stop new assignments. |
+| `done` or `/done` | Mark the latest active dispatch complete and become available again. |
 
 ## Statuses
 
-### Volunteer statuses
-
 | Status | Meaning |
 | --- | --- |
-| `available` | Registered and can receive dispatch requests. |
-| `busy` | Has an active dispatch request. |
-| `inactive` | Registered but should not receive dispatch requests. |
+| `inactive` | Registration is incomplete, availability is false, or assignments are paused. |
+| `available` | Registration is complete and the volunteer can be matched. |
+| `busy` | The volunteer has an active dispatch. |
 
-### Dispatch statuses
+## Dispatch lifecycle
 
-| Status | Meaning |
-| --- | --- |
-| `sent` | Dispatch request was created for a volunteer. |
-| `done` | Volunteer sent `done` or `/done`. |
-| `cancelled` | Reserved for future cancellation flow. |
+`VolunteerManagementService.create_dispatch_request(...)` now requires:
 
-## Dispatch sending contract
+- a completed volunteer profile
+- volunteer status `available`
+- non-empty dispatch message text
 
-`VolunteerManagementService.create_dispatch_request(...)` creates a dispatch record and marks the volunteer `busy`. It returns source metadata and message text so a channel adapter can send the message through the correct bot.
+It creates a `volunteer_dispatches` row and changes the volunteer to `busy`.
 
-For Telegram volunteers, the future matcher/dispatcher should:
-
-1. Select a volunteer row.
-2. Call `create_dispatch_request(...)` with the incident id and message text.
-3. Send `result.message_text` to `result.source_chat_id` using `TELEGRAM_VOLUNTEER_BOT_TOKEN`.
-4. Wait for `done` from `/webhooks/telegram/volunteers`.
+When the volunteer sends `done`, the latest `sent` dispatch becomes `done`, gets a completion timestamp, and the volunteer returns to `available`.
 
 ## Local setup
-
-Start the backend with both bot tokens:
 
 ```powershell
 cd D:\Projects\DispatchAI\DispatchAI\backend
 
-$env:DATABASE_URL = "postgresql+psycopg://postgres:postgres@localhost:5432/ai_rescue"
-$env:TELEGRAM_INCIDENT_BOT_TOKEN = "PASTE_INCIDENT_BOT_TOKEN_HERE"
-$env:TELEGRAM_VOLUNTEER_BOT_TOKEN = "PASTE_VOLUNTEER_BOT_TOKEN_HERE"
+$env:DATABASE_URL = "postgresql+psycopg://USERNAME:PASSWORD@HOST:5432/postgres"
+$env:TELEGRAM_INCIDENT_BOT_TOKEN = "PASTE_INCIDENT_BOT_TOKEN"
+$env:TELEGRAM_VOLUNTEER_BOT_TOKEN = "PASTE_VOLUNTEER_BOT_TOKEN"
 
 python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-Expose the backend:
-
-```powershell
-cloudflared tunnel --url http://127.0.0.1:8000
-```
-
-Register the volunteer bot webhook:
+Register the volunteer bot webhook with the current public backend URL:
 
 ```powershell
 $volunteerBotToken = $env:TELEGRAM_VOLUNTEER_BOT_TOKEN
-$publicBackendUrl = "https://YOUR-TUNNEL.trycloudflare.com"
+$publicBackendUrl = "https://YOUR-CURRENT-TUNNEL.trycloudflare.com"
 $webhookUrl = "$publicBackendUrl/webhooks/telegram/volunteers"
 
 $body = @{
@@ -156,35 +109,13 @@ Invoke-RestMethod `
 
 ## Manual verification
 
-Send the volunteer bot:
-
-```text
-/register
-```
-
-Expected reply:
-
-```text
-Volunteer registered. You will receive dispatch messages here when help is needed.
-```
-
-Check database:
+Send `/register` and answer all seven questions. Then run:
 
 ```sql
-select id, source, source_chat_id, status, display_name
+select id, source_chat_id, display_name, status, metadata_json
 from volunteers
 order by id desc
 limit 5;
 ```
 
-After a dispatch record exists, send:
-
-```text
-done
-```
-
-Expected reply:
-
-```text
-Dispatch #<id> marked done. Thank you.
-```
+Expected: `registration_complete` is true and the matching fields are populated.

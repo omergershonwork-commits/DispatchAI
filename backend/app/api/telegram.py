@@ -16,16 +16,10 @@ from app.services.qwen_client import QwenClientError
 from app.services.telegram_bot_client import TelegramBotClient, TelegramBotClientError
 
 EXTRACTION_UNAVAILABLE_ERROR = "incident_extraction_unavailable"
-"""Safe response code returned when extraction fails after webhook acceptance."""
-
 INCIDENT_PERSISTENCE_UNAVAILABLE_ERROR = "incident_persistence_unavailable"
-"""Safe response code returned when incident persistence fails after webhook acceptance."""
-
 TELEGRAM_REPLY_UNAVAILABLE_ERROR = "telegram_reply_unavailable"
-"""Safe response code returned when Telegram reply sending fails after webhook acceptance."""
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
-"""Router containing Telegram webhook ingestion endpoints."""
 
 
 def get_incident_extraction_service() -> IncidentExtractionService:
@@ -57,15 +51,9 @@ def receive_telegram_webhook(
     incident_persistence_service: IncidentPersistenceService = Depends(get_incident_persistence_service),
     telegram_bot_client: TelegramBotClient = Depends(get_telegram_bot_client),
 ) -> TelegramWebhookAccepted:
-    """Accept a Telegram webhook update, extract text details, persist it, and reply.
-
-    This endpoint accepts the webhook regardless of extraction, persistence, or reply
-    success so Telegram does not retry indefinitely. Volunteer dispatch is still out
-    of scope for this endpoint.
-    """
+    """Accept an incident Telegram update, preserve context, persist it, and reply."""
 
     message = update.message
-
     extraction: IncidentExtractionResult | None = None
     extraction_error: str | None = None
     persistence_result: IncidentPersistenceResult | None = None
@@ -76,8 +64,14 @@ def receive_telegram_webhook(
     if message and message.text and message.text.strip():
         source_context = build_telegram_source_context(update)
         try:
-            extraction = extraction_service.extract_from_text(message.text)
-        except (IncidentExtractionError, QwenClientError, ValueError):
+            context_builder = getattr(incident_persistence_service, "build_extraction_text", None)
+            extraction_text = (
+                context_builder(source_context)
+                if callable(context_builder)
+                else source_context.raw_text
+            )
+            extraction = extraction_service.extract_from_text(extraction_text)
+        except (IncidentExtractionError, IncidentPersistenceError, QwenClientError, ValueError):
             extraction_error = EXTRACTION_UNAVAILABLE_ERROR
 
         if extraction is not None:
@@ -139,54 +133,43 @@ def build_telegram_reply_text(
     persistence_result: IncidentPersistenceResult | None = None,
     persistence_error: str | None = None,
 ) -> str:
-    """Build a concise Telegram reply from extraction and persistence output."""
+    """Build a calm user-facing reply without exposing backend workflow details."""
 
     if extraction_error or extraction is None:
         return (
-            "I received your message, but I could not extract the incident details yet. "
-            "Please send the location and what help is needed."
+            "I received your message, but I still need clearer details. "
+            "Please send what happened, your exact location, and the help you need. "
+            "If there is immediate danger, contact local emergency services now."
         )
 
     if not extraction.is_incident:
         return extraction.rejection_reason or (
-            "I can only process incident reports right now. Please send what happened, "
-            "where it happened, and what help is needed."
+            "Please describe what happened, the exact location, and the help that is needed."
         )
 
     if persistence_error:
         return (
-            "Incident report received, but I could not save it yet. "
-            "Please resend the location and what help is needed in one message."
+            "I understood your report, but I could not save it. "
+            "Please resend the full report in one message. "
+            "If there is immediate danger, contact local emergency services now."
         )
 
     if extraction.should_ask_follow_up and extraction.follow_up_question:
-        return extraction.follow_up_question
-
-    if persistence_result:
-        reply_lines = _build_persisted_reply_header(persistence_result)
-    else:
-        reply_lines = ["Incident report received."]
-
-    if extraction.summary:
-        reply_lines.append(f"Summary: {extraction.summary}")
-    if extraction.location_text:
-        reply_lines.append(f"Location: {extraction.location_text}")
-    if extraction.urgency:
-        reply_lines.append(f"Urgency: {extraction.urgency}")
-    if extraction.needs:
-        reply_lines.append(f"Needs: {', '.join(extraction.needs)}")
+        return (
+            "Your report has been received. I need one more detail before it can be matched.\n"
+            f"{extraction.follow_up_question}\n"
+            "If there is immediate danger, contact local emergency services now."
+        )
 
     if persistence_result and persistence_result.status == "ready_for_dispatch":
-        reply_lines.append("This report is ready for dispatch matching.")
-    else:
-        reply_lines.append("I will keep tracking this report while dispatch support is being prepared.")
+        return (
+            "Your emergency report has been received and saved. "
+            "Available volunteers are now being matched. "
+            "A responder has not yet been confirmed. "
+            "If there is immediate danger, contact local emergency services now."
+        )
 
-    return "\n".join(reply_lines)
-
-
-def _build_persisted_reply_header(persistence_result: IncidentPersistenceResult) -> list[str]:
-    """Return the first reply line for a persisted incident."""
-
-    if persistence_result.updated:
-        return [f"Incident #{persistence_result.incident_id} updated."]
-    return [f"Incident #{persistence_result.incident_id} recorded."]
+    return (
+        "Your report has been received. Please remain available in this chat for follow-up questions. "
+        "If there is immediate danger, contact local emergency services now."
+    )
