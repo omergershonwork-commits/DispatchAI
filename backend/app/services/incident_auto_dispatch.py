@@ -11,9 +11,11 @@ from app.models.incident import Incident
 from app.models.volunteer import (
     DISPATCH_STATUS_ACCEPTED,
     DISPATCH_STATUS_SENT,
+    Volunteer,
     VolunteerDispatch,
 )
 from app.services.dispatch_matching import DispatchMatchingError, VolunteerMatchingService
+from app.services.incident_assigned_forces import sync_assigned_force
 from app.services.telegram_bot_client import TelegramBotClient, TelegramBotClientError
 from app.services.volunteer_management import VolunteerManagementError, VolunteerManagementService
 
@@ -41,8 +43,6 @@ class IncidentAutoDispatchService:
         self.volunteer_service = VolunteerManagementService(db)
 
     def dispatch_ready_incident(self, incident_id: int) -> IncidentAutoDispatchResult:
-        """Send one offer without duplicating an open offer or accepted assignment."""
-
         existing_open = (
             self.db.query(VolunteerDispatch)
             .filter(
@@ -102,6 +102,15 @@ class IncidentAutoDispatchService:
                 incident_id=incident.id,
             )
             self.telegram_bot_client.send_message(dispatch.source_chat_id, dispatch.message_text)
+
+            volunteer = self.db.get(Volunteer, recommendation.volunteer_id)
+            sync_assigned_force(
+                incident,
+                volunteer,
+                status="pending_response",
+                dispatch_id=dispatch.dispatch_id,
+            )
+
             recommendation_row = self.db.get(DispatchRecommendation, recommendation.recommendation_id)
             if recommendation_row is not None:
                 recommendation_row.status = RECOMMENDATION_STATUS_DISPATCH_CREATED
@@ -120,11 +129,14 @@ class IncidentAutoDispatchService:
 
     def _build_dispatch_message(self, incident: Incident) -> str:
         needs = ", ".join(incident.needs or []) or "general assistance"
+        affected = incident.casualties_text or "not specified"
         return (
             "New volunteer dispatch offer\n"
+            f"Title: {incident.title or incident.incident_type or 'Incident'}\n"
             f"Location: {incident.location_text or 'unknown'}\n"
             f"Summary: {incident.summary}\n"
             f"Urgency: {incident.urgency}\n"
+            f"Affected people: {affected}\n"
             f"Needs: {needs}\n\n"
             "Reply accept if you can respond, or decline if you cannot. "
             "You will not receive another offer while this response is pending."
