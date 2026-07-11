@@ -21,6 +21,12 @@ TELEGRAM_VOLUNTEER_BOT_TOKEN = os.getenv("TELEGRAM_VOLUNTEER_BOT_TOKEN", "")
 TELEGRAM_API_BASE_URL = os.getenv("TELEGRAM_API_BASE_URL", "https://api.telegram.org")
 TELEGRAM_TIMEOUT_SECONDS = float(os.getenv("TELEGRAM_TIMEOUT_SECONDS", "10"))
 
+GEOCODING_ENABLED = os.getenv("GEOCODING_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
+GEOCODING_BASE_URL = os.getenv("GEOCODING_BASE_URL", "https://nominatim.openstreetmap.org")
+GEOCODING_USER_AGENT = os.getenv("GEOCODING_USER_AGENT", "DispatchAI/1.0")
+GEOCODING_TIMEOUT_SECONDS = float(os.getenv("GEOCODING_TIMEOUT_SECONDS", "8"))
+GEOCODING_COUNTRY_CODES = os.getenv("GEOCODING_COUNTRY_CODES", "il")
+
 DISPATCH_OFFER_TIMEOUT_SECONDS = int(os.getenv("DISPATCH_OFFER_TIMEOUT_SECONDS", "120"))
 DISPATCH_TIMEOUT_POLL_SECONDS = int(os.getenv("DISPATCH_TIMEOUT_POLL_SECONDS", "15"))
 
@@ -40,6 +46,11 @@ class Settings:
     telegram_volunteer_bot_token: str = field(default=TELEGRAM_VOLUNTEER_BOT_TOKEN)
     telegram_api_base_url: str = field(default=TELEGRAM_API_BASE_URL)
     telegram_timeout_seconds: float = field(default=TELEGRAM_TIMEOUT_SECONDS)
+    geocoding_enabled: bool = field(default=GEOCODING_ENABLED)
+    geocoding_base_url: str = field(default=GEOCODING_BASE_URL)
+    geocoding_user_agent: str = field(default=GEOCODING_USER_AGENT)
+    geocoding_timeout_seconds: float = field(default=GEOCODING_TIMEOUT_SECONDS)
+    geocoding_country_codes: str = field(default=GEOCODING_COUNTRY_CODES)
     dispatch_offer_timeout_seconds: int = field(default=DISPATCH_OFFER_TIMEOUT_SECONDS)
     dispatch_timeout_poll_seconds: int = field(default=DISPATCH_TIMEOUT_POLL_SECONDS)
 
