@@ -1,10 +1,12 @@
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.db.session import Base
 from app.models.incident import (
+    INCIDENT_STATUS_CLOSED,
     INCIDENT_STATUS_PENDING_DETAILS,
     INCIDENT_STATUS_READY_FOR_DISPATCH,
     Incident,
@@ -13,6 +15,8 @@ from app.schemas.incident import IncidentExtractionResult
 
 PENDING_STATUS = INCIDENT_STATUS_PENDING_DETAILS
 READY_STATUS = INCIDENT_STATUS_READY_FOR_DISPATCH
+CLOSED_STATUS = INCIDENT_STATUS_CLOSED
+DEFAULT_PENDING_CONTEXT_TTL_MINUTES = 15
 
 
 class IncidentPersistenceError(RuntimeError):
@@ -41,19 +45,20 @@ class IncidentPersistenceResult:
 
 
 class IncidentPersistenceService:
-    """Persist source-agnostic incident extractions into the database."""
+    """Persist source-agnostic incident extractions and conversation state."""
 
-    def __init__(self, db: Session) -> None:
-        """Create a persistence service bound to one SQLAlchemy session."""
-
+    def __init__(self, db: Session, pending_context_ttl_minutes: int = DEFAULT_PENDING_CONTEXT_TTL_MINUTES) -> None:
+        if pending_context_ttl_minutes <= 0:
+            raise ValueError("Pending incident context TTL must be positive.")
         self.db = db
+        self.pending_context_ttl = timedelta(minutes=pending_context_ttl_minutes)
 
     def build_extraction_text(self, source_context: SourceIncidentContext) -> str:
-        """Combine a follow-up message with the pending incident conversation context."""
+        """Combine a follow-up message with recent pending incident context."""
 
         try:
             self._ensure_schema()
-            pending_incident = self._find_pending_incident(
+            pending_incident = self._find_recent_pending_incident(
                 source_context.source,
                 source_context.source_chat_id,
             )
@@ -77,6 +82,24 @@ class IncidentPersistenceService:
             "Merge the latest message with the existing incident. Preserve known facts and only replace them when the latest message clearly corrects them."
         )
 
+    def close_pending_incident(self, source: str, source_chat_id: int) -> bool:
+        """Close the latest pending incident for one source conversation."""
+
+        try:
+            self._ensure_schema()
+            incident = self._find_pending_incident(source, source_chat_id)
+            if incident is None:
+                return False
+            incident.status = CLOSED_STATUS
+            metadata = dict(incident.metadata_json or {})
+            metadata["closed_reason"] = "conversation_reset"
+            incident.metadata_json = metadata
+            self.db.commit()
+            return True
+        except SQLAlchemyError as exc:
+            self.db.rollback()
+            raise IncidentPersistenceError("Pending incident reset failed.") from exc
+
     def persist_incident(
         self,
         source_context: SourceIncidentContext,
@@ -91,7 +114,7 @@ class IncidentPersistenceService:
 
         try:
             self._ensure_schema()
-            pending_incident = self._find_pending_incident(
+            pending_incident = self._find_recent_pending_incident(
                 source_context.source,
                 source_context.source_chat_id,
             )
@@ -121,13 +144,20 @@ class IncidentPersistenceService:
         )
 
     def _ensure_schema(self) -> None:
-        """Create known ORM tables when running without migrations in local/dev mode."""
-
         Base.metadata.create_all(bind=self.db.get_bind())
 
-    def _find_pending_incident(self, source: str, source_chat_id: int) -> Incident | None:
-        """Return the latest pending incident for a source conversation."""
+    def _find_recent_pending_incident(self, source: str, source_chat_id: int) -> Incident | None:
+        incident = self._find_pending_incident(source, source_chat_id)
+        if incident is None:
+            return None
+        updated_at = incident.updated_at or incident.created_at
+        if updated_at.tzinfo is None:
+            updated_at = updated_at.replace(tzinfo=UTC)
+        if updated_at < datetime.now(UTC) - self.pending_context_ttl:
+            return None
+        return incident
 
+    def _find_pending_incident(self, source: str, source_chat_id: int) -> Incident | None:
         return (
             self.db.query(Incident)
             .filter(
@@ -135,18 +165,11 @@ class IncidentPersistenceService:
                 Incident.source_chat_id == source_chat_id,
                 Incident.status == PENDING_STATUS,
             )
-            .order_by(Incident.created_at.desc(), Incident.id.desc())
+            .order_by(Incident.updated_at.desc(), Incident.created_at.desc(), Incident.id.desc())
             .first()
         )
 
-    def _build_incident(
-        self,
-        source_context: SourceIncidentContext,
-        extraction: IncidentExtractionResult,
-    ) -> Incident:
-        """Build a new incident ORM object from source metadata and extraction."""
-
-        status = self._status_from_extraction(extraction)
+    def _build_incident(self, source_context: SourceIncidentContext, extraction: IncidentExtractionResult) -> Incident:
         return Incident(
             source=source_context.source,
             source_update_id=source_context.source_update_id,
@@ -162,7 +185,7 @@ class IncidentPersistenceService:
             phone_number=extraction.phone_number,
             needs=list(extraction.needs),
             confidence=extraction.confidence,
-            status=status,
+            status=READY_STATUS if extraction.should_create_incident else PENDING_STATUS,
             metadata_json={
                 "missing_fields": list(extraction.missing_fields),
                 "follow_up_question": extraction.follow_up_question,
@@ -175,8 +198,6 @@ class IncidentPersistenceService:
         source_context: SourceIncidentContext,
         extraction: IncidentExtractionResult,
     ) -> None:
-        """Merge a follow-up extraction into an existing pending incident."""
-
         incident.source_update_id = source_context.source_update_id
         incident.source_message_id = source_context.source_message_id
         incident.raw_text = f"{incident.raw_text}\n\n--- follow-up ---\n{source_context.raw_text}"
@@ -193,43 +214,21 @@ class IncidentPersistenceService:
             "missing_fields": list(extraction.missing_fields),
             "follow_up_question": extraction.follow_up_question,
         }
-        if extraction.should_create_incident or self._has_required_fields(incident):
-            incident.status = READY_STATUS
-        else:
-            incident.status = PENDING_STATUS
-
-    def _status_from_extraction(self, extraction: IncidentExtractionResult) -> str:
-        """Return the incident status implied by extraction completeness."""
-
-        return READY_STATUS if extraction.should_create_incident else PENDING_STATUS
+        incident.status = READY_STATUS if self._has_required_fields(incident) else PENDING_STATUS
 
     def _has_required_fields(self, incident: Incident) -> bool:
-        """Return whether the stored incident has enough details for dispatch."""
-
-        return bool(incident.summary and incident.location_text and incident.needs)
+        return bool(incident.summary and incident.incident_type and incident.location_text and incident.needs)
 
     def _choose_text(self, new_value: str | None, current_value: str | None) -> str | None:
-        """Prefer a non-empty new text value, otherwise preserve the current value."""
-
         if new_value and new_value.strip():
             return new_value.strip()
         return current_value
 
     def _choose_urgency(self, new_value: str, current_value: str) -> str:
-        """Keep the highest urgency label between the existing and new extraction."""
-
-        ranking = {
-            "unknown": 0,
-            "low": 1,
-            "medium": 2,
-            "high": 3,
-            "critical": 4,
-        }
+        ranking = {"unknown": 0, "low": 1, "medium": 2, "high": 3, "critical": 4}
         return new_value if ranking.get(new_value, 0) >= ranking.get(current_value, 0) else current_value
 
     def _merge_needs(self, current_needs: list[str] | None, new_needs: list[str]) -> list[str]:
-        """Merge need lists while preserving order and removing duplicates."""
-
         merged: list[str] = []
         for need in [*(current_needs or []), *new_needs]:
             clean_need = need.strip()
