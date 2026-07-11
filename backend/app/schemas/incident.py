@@ -8,6 +8,7 @@ IncidentMissingField = Literal[
     "incident_type",
     "location_text",
     "casualties_text",
+    "people_count",
     "contact_name",
     "phone_number",
     "needs",
@@ -23,7 +24,7 @@ class IncidentExtractionResult(BaseModel):
     """Validated structured data extracted from a source message."""
 
     is_incident: bool
-    title: str = Field(min_length=2, max_length=160)
+    title: str = Field(default="Incident report", min_length=2, max_length=160)
     summary: str
     incident_type: str | None = None
     location_text: str | None = None
