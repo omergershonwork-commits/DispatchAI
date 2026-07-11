@@ -17,6 +17,48 @@
       "preferred_skills": ["medical", "first_aid", "paramedic", "doctor"]
     },
     {
+      "name": "security_urgent",
+      "description": "Robbery, assault, threat, violence, or another immediate personal-safety incident.",
+      "keywords": ["security", "robbery", "robbed", "assault", "attack", "threat", "violence", "crime", "unsafe"],
+      "urgencies": ["high", "critical"],
+      "weights": {
+        "location": 0.30,
+        "availability": 0.25,
+        "skill_match": 0.25,
+        "response_time": 0.15,
+        "reliability": 0.05
+      },
+      "preferred_skills": ["security", "crisis_support", "coordination", "first_aid"]
+    },
+    {
+      "name": "disaster_rescue",
+      "description": "Earthquake, building collapse, trapped people, flood, explosion, or urgent rescue.",
+      "keywords": ["earthquake", "collapse", "trapped", "rescue", "flood", "explosion", "debris", "evacuation"],
+      "urgencies": ["high", "critical"],
+      "weights": {
+        "location": 0.25,
+        "availability": 0.20,
+        "skill_match": 0.35,
+        "response_time": 0.15,
+        "reliability": 0.05
+      },
+      "preferred_skills": ["rescue", "search_and_rescue", "medical", "evacuation"]
+    },
+    {
+      "name": "fire_response",
+      "description": "Fire, smoke, burning structures, or explosion-related support.",
+      "keywords": ["fire", "smoke", "burning", "flames", "explosion"],
+      "urgencies": ["high", "critical"],
+      "weights": {
+        "location": 0.25,
+        "availability": 0.20,
+        "skill_match": 0.35,
+        "response_time": 0.15,
+        "reliability": 0.05
+      },
+      "preferred_skills": ["fire_response", "rescue", "evacuation", "medical"]
+    },
+    {
       "name": "transport",
       "description": "Transport, pickup, evacuation ride, delivery by vehicle, or moving people or supplies.",
       "keywords": ["transport", "ride", "pickup", "car", "drive", "evacuation", "evacuate", "deliver", "delivery"],
