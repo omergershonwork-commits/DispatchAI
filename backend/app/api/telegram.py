@@ -83,17 +83,16 @@ def receive_telegram_webhook(
 
         if command in NEW_COMMANDS or command in CANCEL_COMMANDS:
             try:
-                closed = incident_persistence_service.close_pending_incident(
-                    source_context.source,
-                    source_context.source_chat_id,
-                )
+                resetter = getattr(incident_persistence_service, "close_pending_incident", None)
+                closed = bool(resetter(source_context.source, source_context.source_chat_id)) if callable(resetter) else False
                 reply_text = build_conversation_command_reply(command, closed)
             except (IncidentPersistenceError, ValueError):
                 persistence_error = INCIDENT_PERSISTENCE_UNAVAILABLE_ERROR
                 reply_text = "I could not reset the current report. Please try again."
         else:
             try:
-                extraction_text = incident_persistence_service.build_extraction_text(source_context)
+                context_builder = getattr(incident_persistence_service, "build_extraction_text", None)
+                extraction_text = context_builder(source_context) if callable(context_builder) else source_context.raw_text
                 extraction = extraction_service.extract_from_text(extraction_text)
             except (IncidentExtractionError, IncidentPersistenceError, QwenClientError, ValueError):
                 extraction_error = EXTRACTION_UNAVAILABLE_ERROR
