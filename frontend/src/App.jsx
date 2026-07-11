@@ -41,12 +41,17 @@ function App() {
 
     setSelectedIncident(incident);
     setLeftTab('incidents');
-    if (keepRightVolunteer) {
-      setActiveDossier('volunteer');
-      setIsRightOpen(true);
-    } else {
+    if (!keepRightVolunteer && !isCommandMode) {
+      setLeftTab('incidents');
       setActiveDossier('incident');
       setIsRightOpen(true);
+      setSelectedVolunteer(null);
+    } else if (keepRightVolunteer && !isCommandMode) {
+      setActiveDossier('volunteer');
+      setIsRightOpen(true);
+      if (leftTab === 'incidents') {
+        setSelectedVolunteer(null);
+      }
     }
   };
 
@@ -58,9 +63,16 @@ function App() {
     setSelectedVolunteer(volunteer);
     if (!keepTab && !isCommandMode) {
       setLeftTab('forces');
+      setActiveDossier('volunteer');
+      setIsRightOpen(true);
+      setSelectedIncident(null);
+    } else if (keepTab && !isCommandMode) {
+      setActiveDossier('volunteer');
+      setIsRightOpen(true);
+      if (leftTab === 'forces') {
+        setSelectedIncident(null);
+      }
     }
-    setActiveDossier('volunteer');
-    setIsRightOpen(true);
   };
 
   const [incidents, setIncidents] = useState([]);

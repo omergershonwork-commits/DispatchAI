@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Polyline, useMap, useMapEvents, Popup } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Polyline, useMap, useMapEvents, Popup, Tooltip } from 'react-leaflet';
 import VolunteerCard from './components/VolunteerCard';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
@@ -29,30 +29,45 @@ const ZoomTracker = ({ onZoomChange }) => {
 };
 
 // Component to handle camera movements
-const MapCameraHandler = ({ selectedVolunteer, selectedIncident, leftTab, volunteers }) => {
+const MapCameraHandler = ({ selectedVolunteer, selectedIncident, leftTab, volunteers, incidents }) => {
   const map = useMap();
+  const prevVol = React.useRef(selectedVolunteer?.id);
+  const prevInc = React.useRef(selectedIncident?.id);
+
   useEffect(() => {
-    if (leftTab === 'incidents' && selectedVolunteer && selectedIncident) {
-      const bounds = L.latLngBounds([selectedVolunteer.position, selectedIncident.position]);
-      map.flyToBounds(bounds, { padding: [50, 50], duration: 1.5 });
-    } else if (leftTab === 'forces' && selectedVolunteer) {
-      map.flyTo(selectedVolunteer.position, 16, {
-        duration: 1.5,
-        easeLinearity: 0.25,
-      });
-    } else if (leftTab === 'incidents' && selectedIncident) {
-      const assignedVols = volunteers.filter(v => v.assignedTo === selectedIncident.id);
-      if (assignedVols.length > 0) {
-        const bounds = L.latLngBounds([selectedIncident.position, ...assignedVols.map(v => v.position)]);
-        map.flyToBounds(bounds, { padding: [80, 80], duration: 1.5 });
+    const volChanged = selectedVolunteer?.id !== prevVol.current;
+    const incChanged = selectedIncident?.id !== prevInc.current;
+    
+    prevVol.current = selectedVolunteer?.id;
+    prevInc.current = selectedIncident?.id;
+    
+    if (!volChanged && !incChanged) return;
+
+    if (leftTab === 'incidents' && selectedIncident) {
+      if (selectedVolunteer) {
+        const bounds = L.latLngBounds([selectedVolunteer.position, selectedIncident.position]);
+        map.flyToBounds(bounds, { padding: [50, 50], duration: 1.5 });
       } else {
-        map.flyTo(selectedIncident.position, 15, {
-          duration: 1.5,
-          easeLinearity: 0.25,
-        });
+        const assignedVols = volunteers.filter(v => v.assignedTo === selectedIncident.id);
+        if (assignedVols.length > 0) {
+          const bounds = L.latLngBounds([selectedIncident.position, ...assignedVols.map(v => v.position)]);
+          map.flyToBounds(bounds, { padding: [80, 80], duration: 1.5 });
+        } else {
+          map.flyTo(selectedIncident.position, 15, { duration: 1.5, easeLinearity: 0.25 });
+        }
       }
+    } else if (leftTab === 'forces' && selectedVolunteer) {
+      if (selectedVolunteer.assignedTo && incidents) {
+        const assignedIncident = incidents.find(i => i.id === selectedVolunteer.assignedTo);
+        if (assignedIncident) {
+          const bounds = L.latLngBounds([selectedVolunteer.position, assignedIncident.position]);
+          map.flyToBounds(bounds, { padding: [50, 50], duration: 1.5 });
+          return;
+        }
+      }
+      map.flyTo(selectedVolunteer.position, 16, { duration: 1.5, easeLinearity: 0.25 });
     }
-  }, [selectedVolunteer, selectedIncident, leftTab, map, volunteers]);
+  }, [selectedVolunteer, selectedIncident, leftTab, map, volunteers, incidents]);
   return null;
 };
 
@@ -61,14 +76,9 @@ const createEmergencyIcon = (severity, IconComponent, zoom, isSelected) => {
   let size = 32;
   let iconSize = 18;
   
-  if (zoom <= 11) { size = 12; iconSize = 0; }
-  else if (zoom === 12) { size = 16; iconSize = 0; }
-  else if (zoom === 13) { size = 24; iconSize = 14; }
-
-  if (isSelected) {
-    size *= 1.4;
-    if (iconSize > 0) iconSize *= 1.4;
-  }
+  if (zoom <= 9) { size = 12; iconSize = 0; }
+  else if (zoom <= 11) { size = 20; iconSize = 12; }
+  else if (zoom === 12) { size = 24; iconSize = 14; }
 
   const markerHtml = iconSize > 0 
     ? renderToString(
@@ -92,8 +102,6 @@ const createVolunteerIcon = (statusClass, zoom, isSelected) => {
   if (zoom <= 11) size = 4;
   else if (zoom <= 13) size = 8;
   
-  if (isSelected) size *= 1.5; // Make the selected marker larger
-
   return L.divIcon({
     className: 'custom-icon-wrapper',
     html: `<div class="volunteer-marker ${statusClass} ${isSelected ? 'selected' : ''}" style="width: ${size}px; height: ${size}px;"></div>`,
@@ -115,21 +123,21 @@ const MapComponent = ({ isLeftOpen, isRightOpen, incidents = [], volunteers = []
     >
       <MapResizer isLeftOpen={isLeftOpen} isRightOpen={isRightOpen} />
       <ZoomTracker onZoomChange={setZoomLevel} />
-      <MapCameraHandler selectedVolunteer={selectedVolunteer} selectedIncident={selectedIncident} leftTab={leftTab} volunteers={volunteers} />
+      <MapCameraHandler selectedVolunteer={selectedVolunteer} selectedIncident={selectedIncident} leftTab={leftTab} volunteers={volunteers} incidents={incidents} />
       <TileLayer
         url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
       />
 
-      {/* Render Incidents */}
-      {incidents.map(inc => (
-        <Marker
-          key={`inc-${inc.id}`}
-          position={inc.position}
-          icon={createEmergencyIcon(inc.severity, inc.type === 'fire' ? AlertTriangle : inc.type === 'medical' ? Activity : ShieldAlert, zoomLevel, selectedIncident?.id === inc.id)}
+      {/* Render Incidents (Emergencies) */}
+      {incidents.map(incident => (
+        <Marker 
+          key={`inc-${incident.id}`}
+          position={incident.position} 
+          icon={createEmergencyIcon(incident.severity, incident.type === 'fire' ? AlertTriangle : incident.type === 'medical' ? Activity : ShieldAlert, zoomLevel, selectedIncident?.id === incident.id)}
           eventHandlers={{
             click: () => {
-              if (onIncidentClick) onIncidentClick(inc);
+              if (onIncidentClick) onIncidentClick(incident);
             }
           }}
         />
@@ -138,7 +146,7 @@ const MapComponent = ({ isLeftOpen, isRightOpen, incidents = [], volunteers = []
       {/* Render Volunteers */}
       {volunteers.map(vol => (
         <Marker 
-          key={`vol-${vol.id}`}
+          key={vol.id} 
           position={vol.position} 
           icon={createVolunteerIcon(vol.status, zoomLevel, selectedVolunteer?.id === vol.id)}
           eventHandlers={{
@@ -146,7 +154,22 @@ const MapComponent = ({ isLeftOpen, isRightOpen, incidents = [], volunteers = []
               if (onVolunteerClick) onVolunteerClick(vol);
             }
           }}
-        />
+        >
+          <Tooltip direction="top" offset={[0, -20]} opacity={1} className="volunteer-tooltip">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div style={{ 
+                width: '6px', 
+                height: '6px', 
+                borderRadius: '50%', 
+                backgroundColor: vol.status === 'available' ? '#10b981' : '#f59e0b',
+                boxShadow: `0 0 4px ${vol.status === 'available' ? '#10b981' : '#f59e0b'}`
+              }} />
+              <span style={{ fontWeight: 500, fontSize: '0.8rem', letterSpacing: '0.5px' }}>
+                {vol.name}
+              </span>
+            </div>
+          </Tooltip>
+        </Marker>
       ))}
 
       {/* Render Animated Route Lines for dispatched volunteers */}

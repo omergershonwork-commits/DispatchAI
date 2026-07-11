@@ -8,7 +8,9 @@
 /* Top Navigation Bar */
 .topbar {
   height: 60px;
-  background-color: var(--bg-panel);
+  background-color: rgba(18, 19, 22, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border-color);
   display: flex;
   align-items: center;
@@ -107,7 +109,9 @@
 /* Sidebars Base Style */
 .sidebar-left, .sidebar-right {
   width: 380px;
-  background-color: var(--bg-panel);
+  background-color: rgba(18, 19, 22, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   display: flex;
   flex-direction: column;
   z-index: 500;
@@ -124,9 +128,7 @@
 
 .sidebar-left.collapsed, .sidebar-right.collapsed {
   width: 0;
-  min-width: 0;
-  max-width: 0;
-  border: none;
+  border-color: transparent;
 }
 
 .panel-header {
@@ -138,7 +140,9 @@
   letter-spacing: 1.5px;
   font-size: 0.75rem;
   color: var(--text-secondary);
-  background-color: var(--bg-dark);
+  background-color: rgba(10, 10, 12, 0.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -264,12 +268,14 @@
 
 .emergency-marker.selected {
   z-index: 1000 !important;
-  box-shadow: 0 0 15px var(--bg-fallback);
+  box-shadow: 0 0 25px 8px var(--bg-fallback);
+  border: 2px solid #ffffff;
 }
 
 .emergency-marker.selected::after {
-  animation: radarSweep 1s ease-out infinite; /* faster pulse when selected */
+  animation: radarSweep 0.8s ease-out infinite; /* faster pulse when selected */
   border-width: 3px;
+  border-color: #ffffff;
 }
 
 /* Volunteer Marker */
@@ -287,9 +293,13 @@
 }
 
 .volunteer-marker.selected {
-  border: 2px solid white;
-  box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
-  z-index: 1000 !important;
+  z-index: 999 !important;
+  box-shadow: 0 0 15px 5px var(--tactical-green);
+  border: 2px solid #ffffff;
+}
+
+.volunteer-marker.dispatched.selected {
+  box-shadow: 0 0 15px 5px var(--tactical-blue);
 }
 
 /* Clean Minimal Routing Line */
@@ -369,4 +379,27 @@
 .dispatching .emergency-marker,
 .dispatching .volunteer-marker {
   cursor: crosshair !important;
+}
+
+/* Volunteer Hover Tooltip */
+.leaflet-tooltip.volunteer-tooltip {
+  background: #0f172a;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #e2e8f0;
+  border-radius: 20px;
+  padding: 4px 12px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+  font-family: 'Outfit', sans-serif;
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+
+.leaflet-tooltip.volunteer-tooltip::before {
+  border-top-color: #0f172a;
+}
+
+/* Specific override for incidents */
+.leaflet-tooltip.incident-tooltip {
+  border-radius: 8px;
+  padding: 8px 14px;
 }

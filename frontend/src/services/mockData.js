@@ -11,7 +11,7 @@ export const MOCK_INCIDENTS = [
       message: 'Help! There is a huge fire in the Dizengoff Center tunnel, people are trapped!',
       locationName: 'Dizengoff Center, TLV',
       position: [32.0779, 34.7744],
-      aiSynthesis: "Report analyzed: Large-scale fire in an enclosed public space (Dizengoff Center tunnel). Due to reports of trapped individuals, urgency is elevated to CRITICAL. Action taken: Dispatched 3 motorcycle-based paramedics, in order to bypass anticipated heavy traffic.",
+      aiSynthesis: "• ANALYSIS:\nLarge-scale fire in an enclosed public space (Dizengoff Center tunnel). Due to reports of trapped individuals, urgency is elevated to CRITICAL.\n\n• ACTION TAKEN:\nDispatched 3 motorcycle-based paramedics to bypass anticipated heavy traffic.",
       timeline: [
         { time: '14:32', event: 'Received distress WhatsApp message.', active: false },
         { time: '14:32', event: 'AI parsed location and assessed CRITICAL severity.', active: false },
@@ -31,7 +31,7 @@ export const MOCK_INCIDENTS = [
       message: 'Someone collapsed on the street, not breathing, send help fast.',
       locationName: 'Rothschild Blvd 22, TLV',
       position: [32.0617, 34.7711],
-      aiSynthesis: "Report analyzed: Unconscious, non-breathing individual on the street. Diagnosis: Suspected cardiac arrest. Action taken: Dispatched nearest available volunteers equipped with AEDs, for immediate resuscitation.",
+      aiSynthesis: "• ANALYSIS:\nUnconscious, non-breathing individual on the street. Diagnosis: Suspected cardiac arrest.\n\n• ACTION TAKEN:\nDispatched nearest available volunteers equipped with AEDs for immediate resuscitation.",
       timeline: [
         { time: '14:30', event: 'Received emergency report.', active: false },
         { time: '14:31', event: 'AI identified cardiac arrest indicators.', active: false },
@@ -51,7 +51,7 @@ export const MOCK_INCIDENTS = [
       message: 'Suspicious object found near the bus station, please check.',
       locationName: 'Central Bus Station, TLV',
       position: [32.0560, 34.7795],
-      aiSynthesis: "Report analyzed: Suspicious object located in a high-traffic transit hub. Action taken: Dispatched reconnaissance volunteer for visual verification, prior to bomb squad escalation.",
+      aiSynthesis: "• ANALYSIS:\nSuspicious object located in a high-traffic transit hub.\n\n• ACTION TAKEN:\nDispatched reconnaissance volunteer for visual verification, prior to bomb squad escalation.",
       timeline: [
         { time: '14:15', event: 'Received suspicious object report.', active: false },
         { time: '14:16', event: 'AI dispatched 1 reconnaissance volunteer.', active: false },
