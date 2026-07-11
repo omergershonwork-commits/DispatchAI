@@ -21,6 +21,15 @@ CONFIG_PATH = Path(__file__).resolve().parents[1] / "config" / "dispatch_scenari
 TOKEN_PATTERN = re.compile(r"[a-z0-9_]+")
 """Simple tokenizer for incident and volunteer matching terms."""
 
+SUPPORTED_SCORE_DIMENSIONS = {
+    "location",
+    "skill_match",
+    "response_time",
+    "reliability",
+    "inventory_match",
+    "vehicle_match",
+}
+
 
 class DispatchMatchingError(RuntimeError):
     """Raised when volunteer matching cannot be completed."""
@@ -31,22 +40,14 @@ class DispatchScenario:
     """Scenario configuration used for deterministic volunteer scoring."""
 
     name: str
-    """Stable scenario identifier."""
-
     description: str
-    """Human-readable scenario description."""
-
     keywords: list[str]
-    """Keywords used by the scenario selector."""
-
     urgencies: list[str]
-    """Urgency labels associated with the scenario."""
-
     weights: dict[str, float]
-    """Normalized score weights."""
-
     preferred_skills: list[str]
-    """Volunteer skills that fit the scenario."""
+    preferred_inventory: list[str]
+    preferred_vehicles: list[str]
+    urgency_weight_multipliers: dict[str, dict[str, float]]
 
 
 @dataclass(frozen=True)
@@ -54,13 +55,8 @@ class ScenarioSelection:
     """Selected scenario and confidence for an incident."""
 
     scenario: DispatchScenario
-    """Selected dispatch scenario."""
-
     confidence: float
-    """Selection confidence from zero to one."""
-
     matched_terms: list[str]
-    """Terms that influenced the scenario selection."""
 
 
 @dataclass(frozen=True)
@@ -68,13 +64,8 @@ class VolunteerScore:
     """Computed score for one volunteer candidate."""
 
     volunteer_id: int
-    """Volunteer identifier."""
-
     total_score: float
-    """Final weighted score from zero to one."""
-
     breakdown: dict[str, float]
-    """Per-dimension scoring details."""
 
 
 @dataclass(frozen=True)
@@ -82,25 +73,12 @@ class DispatchRecommendationResult:
     """Persisted top volunteer recommendation result."""
 
     recommendation_id: int
-    """Recommendation row identifier."""
-
     incident_id: int
-    """Incident being matched."""
-
     volunteer_id: int
-    """Recommended volunteer."""
-
     scenario: str
-    """Scenario used for scoring."""
-
     rank: int
-    """One-based rank in the recommendation list."""
-
     total_score: float
-    """Final weighted score."""
-
     score_breakdown: dict[str, float]
-    """Per-dimension scoring details."""
 
 
 @dataclass(frozen=True)
@@ -108,24 +86,15 @@ class DispatchRecommendationBatch:
     """Output returned after generating recommendations for one incident."""
 
     incident_id: int
-    """Incident that was matched."""
-
     scenario: str
-    """Selected scenario name."""
-
     scenario_confidence: float
-    """Scenario selection confidence."""
-
     recommendations: list[DispatchRecommendationResult]
-    """Persisted recommendations ordered by rank."""
 
 
 class DispatchScenarioConfig:
     """Load and validate dispatch scenario configuration."""
 
     def __init__(self, config_path: Path = CONFIG_PATH) -> None:
-        """Create a scenario config loader."""
-
         self.config_path = config_path
 
     def load(self) -> tuple[str, float, dict[str, DispatchScenario]]:
@@ -134,6 +103,10 @@ class DispatchScenarioConfig:
         raw_config = json.loads(self.config_path.read_text(encoding="utf-8"))
         default_scenario = raw_config["default_scenario"]
         fallback_threshold = float(raw_config.get("fallback_confidence_threshold", 0.7))
+        urgency_multipliers = self._validate_urgency_multipliers(
+            raw_config.get("urgency_weight_multipliers", {})
+        )
+
         scenarios = {
             scenario["name"]: DispatchScenario(
                 name=scenario["name"],
@@ -142,6 +115,9 @@ class DispatchScenarioConfig:
                 urgencies=list(scenario.get("urgencies", [])),
                 weights=self._normalize_weights(dict(scenario["weights"])),
                 preferred_skills=list(scenario.get("preferred_skills", [])),
+                preferred_inventory=list(scenario.get("preferred_inventory", [])),
+                preferred_vehicles=list(scenario.get("preferred_vehicles", [])),
+                urgency_weight_multipliers=urgency_multipliers,
             )
             for scenario in raw_config["scenarios"]
         }
@@ -150,20 +126,58 @@ class DispatchScenarioConfig:
         return default_scenario, fallback_threshold, scenarios
 
     def _normalize_weights(self, weights: dict[str, float]) -> dict[str, float]:
-        """Normalize configured weights so they sum to one."""
+        """Validate and normalize configured weights so they sum to one."""
 
-        total = sum(float(value) for value in weights.values())
+        unknown_dimensions = set(weights).difference(SUPPORTED_SCORE_DIMENSIONS)
+        if unknown_dimensions:
+            names = ", ".join(sorted(unknown_dimensions))
+            raise DispatchMatchingError(f"Unsupported dispatch score dimensions: {names}.")
+
+        normalized_input: dict[str, float] = {}
+        for key, value in weights.items():
+            numeric_value = float(value)
+            if numeric_value < 0:
+                raise DispatchMatchingError("Dispatch scenario weights must not be negative.")
+            normalized_input[key] = numeric_value
+
+        total = sum(normalized_input.values())
         if total <= 0:
             raise DispatchMatchingError("Dispatch scenario weights must sum above zero.")
-        return {key: float(value) / total for key, value in weights.items()}
+        return {key: value / total for key, value in normalized_input.items()}
+
+    def _validate_urgency_multipliers(
+        self,
+        raw_multipliers: dict[str, Any],
+    ) -> dict[str, dict[str, float]]:
+        """Return validated positive urgency multipliers."""
+
+        result: dict[str, dict[str, float]] = {}
+        for urgency, multipliers in raw_multipliers.items():
+            if not isinstance(multipliers, dict):
+                raise DispatchMatchingError("Urgency weight multipliers must be objects.")
+            unknown_dimensions = set(multipliers).difference(SUPPORTED_SCORE_DIMENSIONS)
+            if unknown_dimensions:
+                names = ", ".join(sorted(unknown_dimensions))
+                raise DispatchMatchingError(
+                    f"Unsupported urgency multiplier dimensions: {names}."
+                )
+
+            urgency_values: dict[str, float] = {}
+            for key, value in multipliers.items():
+                numeric_value = float(value)
+                if numeric_value <= 0:
+                    raise DispatchMatchingError(
+                        "Urgency weight multipliers must be greater than zero."
+                    )
+                urgency_values[key] = numeric_value
+            result[str(urgency)] = urgency_values
+        return result
 
 
 class ScenarioSelectionService:
     """Select a dispatch scenario from incident details."""
 
     def __init__(self, scenario_config: DispatchScenarioConfig | None = None) -> None:
-        """Create a scenario selection service."""
-
         config = scenario_config or DispatchScenarioConfig()
         self.default_scenario, self.fallback_threshold, self.scenarios = config.load()
 
@@ -189,15 +203,21 @@ class ScenarioSelectionService:
                 confidence=confidence,
                 matched_terms=best_matches,
             )
-        return ScenarioSelection(scenario=best_scenario, confidence=confidence, matched_terms=best_matches)
+        return ScenarioSelection(
+            scenario=best_scenario,
+            confidence=confidence,
+            matched_terms=best_matches,
+        )
 
     def _incident_terms(self, incident: Incident) -> set[str]:
         """Return normalized text terms from incident details."""
 
         values: list[str] = [
+            incident.title or "",
             incident.summary,
             incident.incident_type or "",
             incident.location_text or "",
+            incident.casualties_text or "",
             incident.urgency,
             *(incident.needs or []),
         ]
@@ -221,9 +241,11 @@ class ScenarioSelectionService:
 class VolunteerMatchingService:
     """Score available volunteers and persist top recommendations."""
 
-    def __init__(self, db: Session, scenario_service: ScenarioSelectionService | None = None) -> None:
-        """Create a volunteer matching service bound to one DB session."""
-
+    def __init__(
+        self,
+        db: Session,
+        scenario_service: ScenarioSelectionService | None = None,
+    ) -> None:
         self.db = db
         self.scenario_service = scenario_service or ScenarioSelectionService()
 
@@ -251,9 +273,17 @@ class VolunteerMatchingService:
                 self._score_volunteer(incident, volunteer, selection.scenario)
                 for volunteer in candidates
             ]
-            ranked_scores = sorted(scores, key=lambda score: score.total_score, reverse=True)[:limit]
+            ranked_scores = sorted(
+                scores,
+                key=lambda score: score.total_score,
+                reverse=True,
+            )[:limit]
             self._delete_existing_recommendations(incident.id)
-            recommendations = self._persist_recommendations(incident, selection, ranked_scores)
+            recommendations = self._persist_recommendations(
+                incident,
+                selection,
+                ranked_scores,
+            )
             self.db.commit()
         except SQLAlchemyError as exc:
             self.db.rollback()
@@ -331,33 +361,89 @@ class VolunteerMatchingService:
     ) -> VolunteerScore:
         """Return weighted volunteer score for one incident and scenario."""
 
-        breakdown = {
+        dimension_scores = {
             "location": self._location_score(incident, volunteer),
-            "availability": 1.0,
             "skill_match": self._skill_score(incident, volunteer, scenario),
             "response_time": self._response_time_score(volunteer),
             "reliability": self._reliability_score(volunteer),
+            "inventory_match": self._inventory_score(volunteer, scenario),
+            "vehicle_match": self._vehicle_score(volunteer, scenario),
         }
+        effective_weights = self._effective_weights(scenario, incident.urgency)
         total_score = sum(
-            breakdown[key] * scenario.weights.get(key, 0.0)
-            for key in breakdown
+            dimension_scores.get(key, 0.0) * weight
+            for key, weight in effective_weights.items()
+        )
+
+        breakdown = {
+            key: round(value, 6)
+            for key, value in dimension_scores.items()
+        }
+        breakdown.update(
+            {
+                f"weight_{key}": round(value, 6)
+                for key, value in effective_weights.items()
+            }
         )
         return VolunteerScore(
             volunteer_id=volunteer.id,
             total_score=round(total_score, 6),
-            breakdown={key: round(value, 6) for key, value in breakdown.items()},
+            breakdown=breakdown,
         )
 
+    def _effective_weights(
+        self,
+        scenario: DispatchScenario,
+        urgency: str,
+    ) -> dict[str, float]:
+        """Apply urgency multipliers and normalize the final situation weights."""
+
+        urgency_multipliers = scenario.urgency_weight_multipliers.get(urgency, {})
+        adjusted = {
+            key: weight * urgency_multipliers.get(key, 1.0)
+            for key, weight in scenario.weights.items()
+        }
+        total = sum(adjusted.values())
+        if total <= 0:
+            raise DispatchMatchingError("Effective dispatch weights must sum above zero.")
+        return {key: value / total for key, value in adjusted.items()}
+
     def _location_score(self, incident: Incident, volunteer: Volunteer) -> float:
-        """Score volunteer service area against incident free-text location."""
+        """Score distance limits first, then service-area text matching."""
+
+        metadata = volunteer.metadata_json or {}
+        distance_km = _first_number(
+            metadata.get("distance_km"),
+            metadata.get("estimated_distance_km"),
+        )
+        max_distance_km = _first_number(metadata.get("max_distance_km"))
+
+        if distance_km is not None and max_distance_km is not None:
+            if max_distance_km <= 0 or distance_km > max_distance_km:
+                return 0.0
+            ratio = max(0.0, distance_km) / max_distance_km
+            return max(0.2, min(1.0, 1.0 - (0.8 * ratio)))
+
+        if distance_km is not None:
+            if distance_km <= 2:
+                return 1.0
+            if distance_km >= 50:
+                return 0.1
+            return max(0.1, 1.0 - ((distance_km - 2) / 53.333333))
 
         location_text = (incident.location_text or "").strip().lower()
-        metadata = volunteer.metadata_json or {}
-        service_areas = [str(area).lower() for area in metadata.get("service_areas", [])]
+        service_areas = [
+            str(area).lower()
+            for area in metadata.get("service_areas", [])
+        ]
         if not location_text or not service_areas:
             return 0.5
-        if any(area and (area in location_text or location_text in area) for area in service_areas):
+        if any(
+            area and (area in location_text or location_text in area)
+            for area in service_areas
+        ):
             return 1.0
+
         location_terms = set(_tokenize(location_text))
         area_terms = set(_tokenize(" ".join(service_areas)))
         if not location_terms or not area_terms:
@@ -365,13 +451,27 @@ class VolunteerMatchingService:
         overlap = len(location_terms.intersection(area_terms)) / len(location_terms)
         return max(0.25, min(1.0, overlap))
 
-    def _skill_score(self, incident: Incident, volunteer: Volunteer, scenario: DispatchScenario) -> float:
+    def _skill_score(
+        self,
+        incident: Incident,
+        volunteer: Volunteer,
+        scenario: DispatchScenario,
+    ) -> float:
         """Score volunteer skills against scenario preferences and incident needs."""
 
         metadata = volunteer.metadata_json or {}
         volunteer_skills = set(_tokenize(" ".join(metadata.get("skills", []))))
         preferred_skills = set(_tokenize(" ".join(scenario.preferred_skills)))
-        incident_terms = set(_tokenize(" ".join([incident.incident_type or "", *(incident.needs or [])])))
+        incident_terms = set(
+            _tokenize(
+                " ".join(
+                    [
+                        incident.incident_type or "",
+                        *(incident.needs or []),
+                    ]
+                )
+            )
+        )
         target_terms = preferred_skills.union(incident_terms)
         if not volunteer_skills and not target_terms:
             return 0.5
@@ -379,34 +479,132 @@ class VolunteerMatchingService:
             return 0.0
         if not target_terms:
             return 0.5
-        return min(1.0, len(volunteer_skills.intersection(target_terms)) / max(1, len(target_terms)))
+        return min(
+            1.0,
+            len(volunteer_skills.intersection(target_terms))
+            / max(1, min(4, len(target_terms))),
+        )
+
+    def _inventory_score(
+        self,
+        volunteer: Volunteer,
+        scenario: DispatchScenario,
+    ) -> float:
+        """Score the volunteer's declared inventory for the selected scenario."""
+
+        metadata = volunteer.metadata_json or {}
+        raw_inventory = [
+            *(volunteer.inventory or []),
+            *(metadata.get("inventory") or []),
+        ]
+        volunteer_items = {
+            _normalize_item(item)
+            for item in raw_inventory
+            if str(item).strip()
+        }
+        target_items = {
+            _normalize_item(item)
+            for item in scenario.preferred_inventory
+            if str(item).strip()
+        }
+
+        if not target_items:
+            return 0.5
+        if not volunteer_items:
+            return 0.0
+
+        matched_count = sum(
+            1
+            for target in target_items
+            if any(_items_match(candidate, target) for candidate in volunteer_items)
+        )
+        return min(1.0, matched_count / max(1, min(3, len(target_items))))
+
+    def _vehicle_score(
+        self,
+        volunteer: Volunteer,
+        scenario: DispatchScenario,
+    ) -> float:
+        """Score the volunteer's vehicle against scenario preferences."""
+
+        preferred = {
+            _normalize_item(value)
+            for value in scenario.preferred_vehicles
+            if str(value).strip()
+        }
+        if not preferred:
+            return 0.5
+
+        metadata = volunteer.metadata_json or {}
+        vehicle = _normalize_item(metadata.get("vehicle", ""))
+        if not vehicle or vehicle in {"none", "no_vehicle", "without_vehicle"}:
+            return 0.0
+        if any(_items_match(vehicle, target) for target in preferred):
+            return 1.0
+        return 0.35
 
     def _response_time_score(self, volunteer: Volunteer) -> float:
         """Score estimated volunteer response time from metadata."""
 
         metadata = volunteer.metadata_json or {}
-        minutes = metadata.get("response_time_minutes")
+        minutes = _first_number(metadata.get("response_time_minutes"))
         if minutes is None:
             return 0.5
-        try:
-            response_minutes = float(minutes)
-        except (TypeError, ValueError):
-            return 0.5
-        if response_minutes <= 5:
+        if minutes <= 5:
             return 1.0
-        if response_minutes >= 60:
+        if minutes >= 60:
             return 0.0
-        return max(0.0, min(1.0, 1 - ((response_minutes - 5) / 55)))
+        return max(0.0, min(1.0, 1 - ((minutes - 5) / 55)))
 
     def _reliability_score(self, volunteer: Volunteer) -> float:
-        """Return volunteer reliability score from metadata."""
+        """Return the explicit trust score with legacy metadata compatibility."""
 
         metadata = volunteer.metadata_json or {}
-        reliability = metadata.get("reliability_score", 0.5)
+        legacy_score = _first_number(metadata.get("reliability_score"))
+        trust_score = _first_number(volunteer.trust_score)
+
+        if trust_score is not None and trust_score != 0.5:
+            return max(0.0, min(1.0, trust_score))
+        if legacy_score is not None:
+            return max(0.0, min(1.0, legacy_score))
+        if trust_score is not None:
+            return max(0.0, min(1.0, trust_score))
+        return 0.5
+
+
+def _first_number(*values: Any) -> float | None:
+    """Return the first value that can be parsed as a finite float."""
+
+    for value in values:
+        if value is None:
+            continue
         try:
-            return max(0.0, min(1.0, float(reliability)))
+            numeric = float(value)
         except (TypeError, ValueError):
-            return 0.5
+            continue
+        if numeric == numeric and numeric not in {float("inf"), float("-inf")}:
+            return numeric
+    return None
+
+
+def _normalize_item(value: Any) -> str:
+    """Normalize profile item names to underscore-separated tokens."""
+
+    return "_".join(_tokenize(str(value)))
+
+
+def _items_match(candidate: str, target: str) -> bool:
+    """Return whether two normalized inventory or vehicle labels overlap."""
+
+    if candidate == target:
+        return True
+    candidate_tokens = set(candidate.split("_"))
+    target_tokens = set(target.split("_"))
+    if not candidate_tokens or not target_tokens:
+        return False
+    return target_tokens.issubset(candidate_tokens) or candidate_tokens.issubset(
+        target_tokens
+    )
 
 
 def _tokenize(value: str) -> list[str]:
