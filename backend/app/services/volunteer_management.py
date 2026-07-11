@@ -4,18 +4,41 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.db.session import Base
+from app.models.incident import (
+    INCIDENT_STATUS_DISPATCHED,
+    INCIDENT_STATUS_READY_FOR_DISPATCH,
+    Incident,
+)
 from app.models.volunteer import (
+    DISPATCH_STATUS_ACCEPTED,
+    DISPATCH_STATUS_DECLINED,
     DISPATCH_STATUS_DONE,
     DISPATCH_STATUS_SENT,
     VOLUNTEER_STATUS_AVAILABLE,
     VOLUNTEER_STATUS_BUSY,
     VOLUNTEER_STATUS_INACTIVE,
+    VOLUNTEER_STATUS_PENDING_RESPONSE,
     Volunteer,
     VolunteerDispatch,
     utc_now,
 )
 
 REGISTER_COMMANDS = {"/start", "/register", "register", "join"}
+ACCEPT_COMMANDS = {"accept", "/accept", "yes", "i accept", "i can come", "coming", "on my way"}
+DECLINE_COMMANDS = {
+    "decline",
+    "/decline",
+    "reject",
+    "/reject",
+    "no",
+    "i cant come",
+    "i can't come",
+    "i cannot come",
+    "cant come",
+    "can't come",
+    "not available",
+    "unavailable",
+}
 DONE_COMMANDS = {"done", "/done", "finished", "complete", "completed"}
 STOP_COMMANDS = {"/stop", "stop", "pause", "inactive"}
 STATUS_COMMANDS = {"/status", "status"}
@@ -51,8 +74,6 @@ class VolunteerManagementError(RuntimeError):
 
 @dataclass(frozen=True)
 class VolunteerSourceContext:
-    """Source-agnostic volunteer metadata from an inbound channel."""
-
     source: str
     source_chat_id: int
     source_user_id: int | None
@@ -64,18 +85,19 @@ class VolunteerSourceContext:
 
 @dataclass(frozen=True)
 class VolunteerCommandResult:
-    """Result returned after processing a volunteer bot message."""
-
     volunteer_id: int | None
     volunteer_status: str | None
     dispatch_id: int | None
     reply_text: str
+    incident_id: int | None = None
+    dispatch_action: str | None = None
+    reporter_source: str | None = None
+    reporter_chat_id: int | None = None
+    reporter_reply_text: str | None = None
 
 
 @dataclass(frozen=True)
 class VolunteerDispatchRequestResult:
-    """Result returned after creating a volunteer dispatch request."""
-
     volunteer_id: int
     source: str
     source_chat_id: int
@@ -90,13 +112,34 @@ class VolunteerManagementService:
         self.db = db
 
     def process_message(self, source_context: VolunteerSourceContext) -> VolunteerCommandResult:
-        """Process a source-agnostic volunteer bot message."""
-
-        command = source_context.raw_text.strip().lower()
+        text = source_context.raw_text.strip()
+        command = text.lower()
         first_word = command.split(maxsplit=1)[0] if command else ""
 
         try:
             self._ensure_schema()
+            volunteer = self._find_volunteer(source_context)
+            active_offer = self._find_latest_dispatch(volunteer.id, DISPATCH_STATUS_SENT) if volunteer else None
+
+            if active_offer is not None:
+                if self._matches_command(command, first_word, ACCEPT_COMMANDS):
+                    return self._accept_dispatch(volunteer, active_offer, source_context)
+                if (
+                    self._matches_command(command, first_word, DECLINE_COMMANDS)
+                    or first_word in CANCEL_COMMANDS
+                ):
+                    return self._decline_dispatch(volunteer, active_offer, source_context)
+                if first_word in STATUS_COMMANDS:
+                    return self._status(source_context)
+                return VolunteerCommandResult(
+                    volunteer.id,
+                    volunteer.status,
+                    active_offer.id,
+                    "A dispatch offer is waiting for your response. Reply accept or decline.",
+                    incident_id=active_offer.incident_id,
+                    dispatch_action="awaiting_response",
+                )
+
             if first_word in REGISTER_COMMANDS:
                 return self._start_or_resume_registration(source_context)
             if first_word in DONE_COMMANDS:
@@ -108,7 +151,6 @@ class VolunteerManagementService:
             if first_word in CANCEL_COMMANDS:
                 return self._cancel_registration(source_context)
 
-            volunteer = self._find_volunteer(source_context)
             if volunteer is not None and self._registration_step(volunteer):
                 return self._process_registration_answer(volunteer, source_context)
             return self._unknown_command(source_context)
@@ -122,7 +164,7 @@ class VolunteerManagementService:
         message_text: str,
         incident_id: int | None = None,
     ) -> VolunteerDispatchRequestResult:
-        """Create a dispatch request for a fully registered available volunteer."""
+        """Create a pending offer for one fully registered available volunteer."""
 
         if not message_text.strip():
             raise ValueError("Volunteer dispatch message must not be empty.")
@@ -136,6 +178,8 @@ class VolunteerManagementService:
                 raise ValueError("Volunteer registration is incomplete.")
             if volunteer.status != VOLUNTEER_STATUS_AVAILABLE:
                 raise ValueError("Volunteer is not currently available.")
+            if self._find_any_open_dispatch(volunteer.id) is not None:
+                raise ValueError("Volunteer already has an open dispatch.")
 
             dispatch = VolunteerDispatch(
                 volunteer_id=volunteer.id,
@@ -143,7 +187,7 @@ class VolunteerManagementService:
                 message_text=message_text.strip(),
                 status=DISPATCH_STATUS_SENT,
             )
-            volunteer.status = VOLUNTEER_STATUS_BUSY
+            volunteer.status = VOLUNTEER_STATUS_PENDING_RESPONSE
             volunteer.last_seen_at = utc_now()
             self.db.add(dispatch)
             self.db.commit()
@@ -164,12 +208,85 @@ class VolunteerManagementService:
     def _ensure_schema(self) -> None:
         Base.metadata.create_all(bind=self.db.get_bind())
 
-    def _start_or_resume_registration(
+    def _matches_command(self, command: str, first_word: str, commands: set[str]) -> bool:
+        return command in commands or first_word in commands
+
+    def _accept_dispatch(
         self,
+        volunteer: Volunteer,
+        dispatch: VolunteerDispatch,
         source_context: VolunteerSourceContext,
     ) -> VolunteerCommandResult:
-        """Start registration, resume an incomplete profile, or reactivate a complete one."""
+        self._apply_source_context(volunteer, source_context)
+        dispatch.status = DISPATCH_STATUS_ACCEPTED
+        metadata = dict(dispatch.metadata_json or {})
+        metadata["accepted_at"] = utc_now().isoformat()
+        dispatch.metadata_json = metadata
+        volunteer.status = VOLUNTEER_STATUS_BUSY
 
+        incident = self.db.get(Incident, dispatch.incident_id) if dispatch.incident_id is not None else None
+        if incident is not None:
+            incident.status = INCIDENT_STATUS_DISPATCHED
+
+        self.db.commit()
+        self.db.refresh(dispatch)
+        self.db.refresh(volunteer)
+
+        display_name = volunteer.display_name or volunteer.source_username or f"Volunteer {volunteer.id}"
+        reporter_reply = None
+        reporter_source = None
+        reporter_chat_id = None
+        if incident is not None:
+            reporter_source = incident.source
+            reporter_chat_id = incident.source_chat_id
+            reporter_reply = (
+                f"Volunteer {display_name} accepted your request and is responding. "
+                "Keep this chat available for updates."
+            )
+
+        return VolunteerCommandResult(
+            volunteer.id,
+            volunteer.status,
+            dispatch.id,
+            "Dispatch accepted. You are now assigned. Reply done when the assignment is complete.",
+            incident_id=dispatch.incident_id,
+            dispatch_action="accepted",
+            reporter_source=reporter_source,
+            reporter_chat_id=reporter_chat_id,
+            reporter_reply_text=reporter_reply,
+        )
+
+    def _decline_dispatch(
+        self,
+        volunteer: Volunteer,
+        dispatch: VolunteerDispatch,
+        source_context: VolunteerSourceContext,
+    ) -> VolunteerCommandResult:
+        self._apply_source_context(volunteer, source_context)
+        dispatch.status = DISPATCH_STATUS_DECLINED
+        metadata = dict(dispatch.metadata_json or {})
+        metadata["declined_at"] = utc_now().isoformat()
+        metadata["decline_text"] = source_context.raw_text.strip()
+        dispatch.metadata_json = metadata
+        volunteer.status = VOLUNTEER_STATUS_AVAILABLE
+
+        incident = self.db.get(Incident, dispatch.incident_id) if dispatch.incident_id is not None else None
+        if incident is not None:
+            incident.status = INCIDENT_STATUS_READY_FOR_DISPATCH
+
+        self.db.commit()
+        self.db.refresh(dispatch)
+        self.db.refresh(volunteer)
+        return VolunteerCommandResult(
+            volunteer.id,
+            volunteer.status,
+            dispatch.id,
+            "Dispatch declined. You remain available for other assignments.",
+            incident_id=dispatch.incident_id,
+            dispatch_action="declined",
+        )
+
+    def _start_or_resume_registration(self, source_context: VolunteerSourceContext) -> VolunteerCommandResult:
         volunteer = self._find_volunteer(source_context)
         if volunteer is None:
             volunteer = Volunteer(
@@ -179,6 +296,16 @@ class VolunteerManagementService:
                 metadata_json={"registration_step": "full_name", "registration_complete": False},
             )
             self.db.add(volunteer)
+
+        open_dispatch = self._find_any_open_dispatch(volunteer.id) if volunteer.id else None
+        if open_dispatch is not None:
+            return VolunteerCommandResult(
+                volunteer.id,
+                volunteer.status,
+                open_dispatch.id,
+                "You already have an active dispatch. Reply done when complete, or respond to the pending offer.",
+                incident_id=open_dispatch.incident_id,
+            )
 
         self._apply_source_context(volunteer, source_context)
         metadata = dict(volunteer.metadata_json or {})
@@ -191,13 +318,10 @@ class VolunteerManagementService:
             self.db.commit()
             self.db.refresh(volunteer)
             return VolunteerCommandResult(
-                volunteer_id=volunteer.id,
-                volunteer_status=volunteer.status,
-                dispatch_id=None,
-                reply_text=(
-                    "Your volunteer profile is already complete and you are now available. "
-                    "Send /status to review it or /stop to pause assignments."
-                ),
+                volunteer.id,
+                volunteer.status,
+                None,
+                "Your volunteer profile is complete and you are now available. Send /status to review it or /stop to pause assignments.",
             )
 
         step = metadata.get("registration_step") or "full_name"
@@ -208,13 +332,11 @@ class VolunteerManagementService:
         self.db.commit()
         self.db.refresh(volunteer)
         return VolunteerCommandResult(
-            volunteer_id=volunteer.id,
-            volunteer_status=volunteer.status,
-            dispatch_id=None,
-            reply_text=(
-                "Welcome to volunteer registration. I will ask a few details so dispatch can match you safely.\n"
-                f"{REGISTRATION_QUESTIONS[step]}"
-            ),
+            volunteer.id,
+            volunteer.status,
+            None,
+            "Welcome to volunteer registration. I will ask a few details so dispatch can match you safely.\n"
+            f"{REGISTRATION_QUESTIONS[step]}",
         )
 
     def _process_registration_answer(
@@ -222,8 +344,6 @@ class VolunteerManagementService:
         volunteer: Volunteer,
         source_context: VolunteerSourceContext,
     ) -> VolunteerCommandResult:
-        """Validate one registration answer and advance the persisted wizard."""
-
         self._apply_source_context(volunteer, source_context)
         metadata = dict(volunteer.metadata_json or {})
         step = self._registration_step(volunteer)
@@ -235,10 +355,10 @@ class VolunteerManagementService:
         if validation_error:
             self.db.commit()
             return VolunteerCommandResult(
-                volunteer_id=volunteer.id,
-                volunteer_status=volunteer.status,
-                dispatch_id=None,
-                reply_text=f"{validation_error}\n{REGISTRATION_QUESTIONS[step]}",
+                volunteer.id,
+                volunteer.status,
+                None,
+                f"{validation_error}\n{REGISTRATION_QUESTIONS[step]}",
             )
 
         next_step = self._next_registration_step(step)
@@ -249,30 +369,25 @@ class VolunteerManagementService:
             self.db.commit()
             self.db.refresh(volunteer)
             return VolunteerCommandResult(
-                volunteer_id=volunteer.id,
-                volunteer_status=volunteer.status,
-                dispatch_id=None,
-                reply_text=REGISTRATION_QUESTIONS[next_step],
+                volunteer.id,
+                volunteer.status,
+                None,
+                REGISTRATION_QUESTIONS[next_step],
             )
 
         metadata["registration_step"] = None
         metadata["registration_complete"] = True
         available_now = bool(metadata.get("available_now"))
         volunteer.metadata_json = metadata
-        volunteer.status = (
-            VOLUNTEER_STATUS_AVAILABLE if available_now else VOLUNTEER_STATUS_INACTIVE
-        )
+        volunteer.status = VOLUNTEER_STATUS_AVAILABLE if available_now else VOLUNTEER_STATUS_INACTIVE
         self.db.commit()
         self.db.refresh(volunteer)
         return VolunteerCommandResult(
-            volunteer_id=volunteer.id,
-            volunteer_status=volunteer.status,
-            dispatch_id=None,
-            reply_text=(
-                "Registration complete. Your profile now includes your area, skills, vehicle, "
-                "travel distance, contact number, and availability. "
-                f"Current status: {volunteer.status}."
-            ),
+            volunteer.id,
+            volunteer.status,
+            None,
+            "Registration complete. Your area, skills, vehicle, travel distance, contact number, and availability were saved. "
+            f"Current status: {volunteer.status}.",
         )
 
     def _apply_registration_answer(
@@ -282,8 +397,6 @@ class VolunteerManagementService:
         step: str,
         answer: str,
     ) -> str | None:
-        """Apply one registration answer and return an error message when invalid."""
-
         if step == "full_name":
             if len(answer) < 2:
                 return "Please send your full name."
@@ -328,13 +441,10 @@ class VolunteerManagementService:
 
     def _next_registration_step(self, current_step: str) -> str | None:
         index = REGISTRATION_STEPS.index(current_step)
-        if index + 1 >= len(REGISTRATION_STEPS):
-            return None
-        return REGISTRATION_STEPS[index + 1]
+        return REGISTRATION_STEPS[index + 1] if index + 1 < len(REGISTRATION_STEPS) else None
 
     def _registration_step(self, volunteer: Volunteer) -> str | None:
-        metadata = volunteer.metadata_json or {}
-        step = metadata.get("registration_step")
+        step = (volunteer.metadata_json or {}).get("registration_step")
         return step if step in REGISTRATION_STEPS else None
 
     def _registration_complete(self, volunteer: Volunteer) -> bool:
@@ -342,8 +452,13 @@ class VolunteerManagementService:
 
     def _cancel_registration(self, source_context: VolunteerSourceContext) -> VolunteerCommandResult:
         volunteer = self._find_volunteer(source_context)
-        if volunteer is None:
-            return VolunteerCommandResult(None, None, None, "No registration is currently active.")
+        if volunteer is None or self._registration_step(volunteer) is None:
+            return VolunteerCommandResult(
+                volunteer.id if volunteer else None,
+                volunteer.status if volunteer else None,
+                None,
+                "No registration is currently active.",
+            )
         metadata = dict(volunteer.metadata_json or {})
         metadata["registration_step"] = None
         volunteer.metadata_json = metadata
@@ -359,24 +474,17 @@ class VolunteerManagementService:
     def _mark_latest_dispatch_done(self, source_context: VolunteerSourceContext) -> VolunteerCommandResult:
         volunteer = self._find_volunteer(source_context)
         if volunteer is None:
-            return VolunteerCommandResult(
-                None,
-                None,
-                None,
-                "You are not registered yet. Send /register to join as a volunteer.",
-            )
+            return VolunteerCommandResult(None, None, None, "You are not registered yet. Send /register to join as a volunteer.")
 
         self._apply_source_context(volunteer, source_context)
-        dispatch = self._find_latest_active_dispatch(volunteer.id)
+        dispatch = self._find_latest_dispatch(volunteer.id, DISPATCH_STATUS_ACCEPTED)
         if dispatch is None:
-            if self._registration_complete(volunteer):
-                volunteer.status = VOLUNTEER_STATUS_AVAILABLE
             self.db.commit()
             return VolunteerCommandResult(
                 volunteer.id,
                 volunteer.status,
                 None,
-                "No active dispatch is assigned to you right now.",
+                "No accepted dispatch is assigned to you right now.",
             )
 
         dispatch.status = DISPATCH_STATUS_DONE
@@ -390,16 +498,22 @@ class VolunteerManagementService:
             volunteer.status,
             dispatch.id,
             "The dispatch has been marked complete. Thank you. You are available for new assignments.",
+            incident_id=dispatch.incident_id,
+            dispatch_action="done",
         )
 
     def _mark_inactive(self, source_context: VolunteerSourceContext) -> VolunteerCommandResult:
         volunteer = self._find_volunteer(source_context)
         if volunteer is None:
+            return VolunteerCommandResult(None, None, None, "You are not registered yet. Send /register to join as a volunteer.")
+        open_dispatch = self._find_any_open_dispatch(volunteer.id)
+        if open_dispatch is not None:
             return VolunteerCommandResult(
-                None,
-                None,
-                None,
-                "You are not registered yet. Send /register to join as a volunteer.",
+                volunteer.id,
+                volunteer.status,
+                open_dispatch.id,
+                "You have an active dispatch. Decline a pending offer or reply done after completing an accepted assignment.",
+                incident_id=open_dispatch.incident_id,
             )
         self._apply_source_context(volunteer, source_context)
         metadata = dict(volunteer.metadata_json or {})
@@ -417,12 +531,7 @@ class VolunteerManagementService:
     def _status(self, source_context: VolunteerSourceContext) -> VolunteerCommandResult:
         volunteer = self._find_volunteer(source_context)
         if volunteer is None:
-            return VolunteerCommandResult(
-                None,
-                None,
-                None,
-                "You are not registered yet. Send /register to join as a volunteer.",
-            )
+            return VolunteerCommandResult(None, None, None, "You are not registered yet. Send /register to join as a volunteer.")
 
         self._apply_source_context(volunteer, source_context)
         step = self._registration_step(volunteer)
@@ -435,6 +544,14 @@ class VolunteerManagementService:
                 f"Registration is incomplete. {REGISTRATION_QUESTIONS[step]}",
             )
 
+        open_dispatch = self._find_any_open_dispatch(volunteer.id)
+        dispatch_line = ""
+        if open_dispatch is not None:
+            if open_dispatch.status == DISPATCH_STATUS_SENT:
+                dispatch_line = f"\nPending offer: dispatch #{open_dispatch.id}. Reply accept or decline."
+            else:
+                dispatch_line = f"\nAccepted assignment: dispatch #{open_dispatch.id}. Reply done when complete."
+
         metadata = volunteer.metadata_json or {}
         skills = ", ".join(metadata.get("skills", [])) or "not provided"
         areas = ", ".join(metadata.get("service_areas", [])) or "not provided"
@@ -444,13 +561,14 @@ class VolunteerManagementService:
         return VolunteerCommandResult(
             volunteer.id,
             volunteer.status,
-            None,
+            open_dispatch.id if open_dispatch else None,
             (
                 f"Volunteer status: {volunteer.status}.\n"
                 f"Name: {volunteer.display_name or 'not provided'}\n"
                 f"Area: {areas}\nSkills: {skills}\nVehicle: {vehicle}\n"
-                f"Maximum distance: {distance} km."
+                f"Maximum distance: {distance} km.{dispatch_line}"
             ),
+            incident_id=open_dispatch.incident_id if open_dispatch else None,
         )
 
     def _unknown_command(self, source_context: VolunteerSourceContext) -> VolunteerCommandResult:
@@ -462,7 +580,7 @@ class VolunteerManagementService:
             volunteer.id if volunteer else None,
             volunteer.status if volunteer else None,
             None,
-            "Volunteer bot commands: /register, /status, done, /stop, /cancel.",
+            "Volunteer bot commands: /register, /status, accept, decline, done, /stop, /cancel.",
         )
 
     def _find_volunteer(self, source_context: VolunteerSourceContext) -> Volunteer | None:
@@ -475,12 +593,23 @@ class VolunteerManagementService:
             .first()
         )
 
-    def _find_latest_active_dispatch(self, volunteer_id: int) -> VolunteerDispatch | None:
+    def _find_latest_dispatch(self, volunteer_id: int, status: str) -> VolunteerDispatch | None:
         return (
             self.db.query(VolunteerDispatch)
             .filter(
                 VolunteerDispatch.volunteer_id == volunteer_id,
-                VolunteerDispatch.status == DISPATCH_STATUS_SENT,
+                VolunteerDispatch.status == status,
+            )
+            .order_by(VolunteerDispatch.sent_at.desc(), VolunteerDispatch.id.desc())
+            .first()
+        )
+
+    def _find_any_open_dispatch(self, volunteer_id: int) -> VolunteerDispatch | None:
+        return (
+            self.db.query(VolunteerDispatch)
+            .filter(
+                VolunteerDispatch.volunteer_id == volunteer_id,
+                VolunteerDispatch.status.in_([DISPATCH_STATUS_SENT, DISPATCH_STATUS_ACCEPTED]),
             )
             .order_by(VolunteerDispatch.sent_at.desc(), VolunteerDispatch.id.desc())
             .first()
