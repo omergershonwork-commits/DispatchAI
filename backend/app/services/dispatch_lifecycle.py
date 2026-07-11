@@ -13,6 +13,7 @@ from app.models.volunteer import (
     Volunteer,
     VolunteerDispatch,
 )
+from app.services.incident_assigned_forces import sync_assigned_force
 from app.services.incident_auto_dispatch import IncidentAutoDispatchError, IncidentAutoDispatchService
 from app.services.telegram_bot_client import TelegramBotClient, TelegramBotClientError
 from app.services.volunteer_management import VolunteerCommandResult, VolunteerSourceContext
@@ -53,8 +54,6 @@ class DispatchLifecycleService:
         self,
         source_context: VolunteerSourceContext,
     ) -> VolunteerCommandResult | None:
-        """Process en-route or arrived messages for an accepted assignment."""
-
         normalized = " ".join(source_context.raw_text.strip().lower().split())
         action = None
         if normalized in EN_ROUTE_COMMANDS:
@@ -98,9 +97,16 @@ class DispatchLifecycleService:
             metadata[timestamp_key] = datetime.now(UTC).isoformat()
             metadata["progress"] = action
             dispatch.metadata_json = metadata
-            self.db.commit()
 
             incident = self.db.get(Incident, dispatch.incident_id) if dispatch.incident_id else None
+            sync_assigned_force(
+                incident,
+                volunteer,
+                status=action,
+                dispatch_id=dispatch.id,
+            )
+            self.db.commit()
+
             display_name = volunteer.display_name or volunteer.source_username or f"Volunteer {volunteer.id}"
             if action == "en_route":
                 volunteer_reply = "Status updated: you are en route. Reply arrived when you reach the location."
@@ -128,8 +134,6 @@ class DispatchLifecycleService:
         self,
         result: VolunteerCommandResult,
     ) -> tuple[int, str] | None:
-        """Return a reporter Telegram update for completion when available."""
-
         if result.dispatch_action != "done" or result.incident_id is None:
             return None
         incident = self.db.get(Incident, result.incident_id)
@@ -141,8 +145,6 @@ class DispatchLifecycleService:
         )
 
     def expire_unanswered_offers(self) -> DispatchTimeoutRunResult:
-        """Expire old offers, release volunteers, and try the next candidate."""
-
         cutoff = datetime.now(UTC) - self.offer_timeout
         try:
             offers = (
@@ -173,6 +175,12 @@ class DispatchLifecycleService:
                 incident = self.db.get(Incident, dispatch.incident_id) if dispatch.incident_id else None
                 if incident is not None:
                     incident.status = INCIDENT_STATUS_READY_FOR_DISPATCH
+                    sync_assigned_force(
+                        incident,
+                        volunteer,
+                        status="expired",
+                        dispatch_id=dispatch.id,
+                    )
                 self.db.commit()
 
                 if volunteer is not None and self.volunteer_bot_client is not None:

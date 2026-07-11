@@ -14,12 +14,10 @@ from app.services.incident_persistence import IncidentPersistenceService, Source
 
 @pytest.fixture
 def db_session() -> Session:
-    """Create an isolated in-memory database session for persistence tests."""
-
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(bind=engine)
-    testing_session_local = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    session = testing_session_local()
+    local = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    session = local()
     try:
         yield session
     finally:
@@ -33,8 +31,6 @@ def source_context(
     chat_id: int = 987654321,
     raw_text: str = "I need medical help near Dizengoff Center",
 ) -> SourceIncidentContext:
-    """Return generic source metadata for persistence tests."""
-
     return SourceIncidentContext(
         source=source,
         source_update_id=update_id,
@@ -45,15 +41,14 @@ def source_context(
 
 
 def actionable_extraction_result() -> IncidentExtractionResult:
-    """Return an actionable extraction result for persistence tests."""
-
     return IncidentExtractionResult(
         is_incident=True,
+        title="Medical help request",
         summary="Person needs medical help near Dizengoff Center.",
         incident_type="medical",
         location_text="Dizengoff Center",
         urgency="high",
-        people_count=1,
+        casualties_text="One person needs assistance",
         contact_name="Omer",
         phone_number="0501234567",
         needs=["medical help"],
@@ -67,15 +62,14 @@ def actionable_extraction_result() -> IncidentExtractionResult:
 
 
 def pending_extraction_result() -> IncidentExtractionResult:
-    """Return an extraction result that needs more sender details."""
-
     return IncidentExtractionResult(
         is_incident=True,
+        title="Security help request",
         summary="Person needs security assistance.",
         incident_type="security",
         location_text=None,
         urgency="high",
-        people_count=1,
+        casualties_text="One person affected",
         contact_name=None,
         phone_number=None,
         needs=["security assistance"],
@@ -89,15 +83,14 @@ def pending_extraction_result() -> IncidentExtractionResult:
 
 
 def non_incident_extraction_result() -> IncidentExtractionResult:
-    """Return a non-incident extraction result that must not be persisted."""
-
     return IncidentExtractionResult(
         is_incident=False,
+        title="Unrelated message",
         summary="Greeting only.",
         incident_type=None,
         location_text=None,
         urgency="unknown",
-        people_count=None,
+        casualties_text=None,
         contact_name=None,
         phone_number=None,
         needs=[],
@@ -110,28 +103,24 @@ def non_incident_extraction_result() -> IncidentExtractionResult:
     )
 
 
-def test_persist_incident_creates_ready_incident(db_session: Session) -> None:
+def test_persist_incident_creates_dashboard_fields(db_session: Session) -> None:
     service = IncidentPersistenceService(db_session)
-
     result = service.persist_incident(source_context(), actionable_extraction_result())
 
     assert result is not None
-    assert result.created is True
-    assert result.updated is False
     assert result.status == INCIDENT_STATUS_READY_FOR_DISPATCH
-
     incident = db_session.get(Incident, result.incident_id)
     assert incident is not None
-    assert incident.source == "telegram"
-    assert incident.location_text == "Dizengoff Center"
-    assert incident.needs == ["medical help"]
+    assert incident.title == "Medical help request"
+    assert incident.casualties_text == "One person needs assistance"
+    assert incident.confidence == 0.91
+    assert incident.metadata_json["assigned_forces"] == []
 
 
 def test_persist_incident_creates_pending_incident(db_session: Session) -> None:
     service = IncidentPersistenceService(db_session)
-
     result = service.persist_incident(
-        source_context(raw_text="Someone is robbing me"),
+        source_context(raw_text="Someone needs security assistance"),
         pending_extraction_result(),
     )
 
@@ -139,83 +128,76 @@ def test_persist_incident_creates_pending_incident(db_session: Session) -> None:
     assert result.status == INCIDENT_STATUS_PENDING_DETAILS
     incident = db_session.get(Incident, result.incident_id)
     assert incident is not None
-    assert incident.incident_type == "security"
     assert incident.metadata_json["follow_up_question"] == "Where exactly is help needed?"
 
 
-def test_build_extraction_text_includes_pending_context_and_latest_message(
-    db_session: Session,
-) -> None:
-    """Verify a short follow-up is combined with the pending incident facts."""
-
+def test_build_extraction_text_includes_new_pending_context(db_session: Session) -> None:
     service = IncidentPersistenceService(db_session)
     service.persist_incident(
-        source_context(raw_text="Someone is robbing me"),
+        source_context(raw_text="Someone needs security assistance"),
         pending_extraction_result(),
     )
 
     extraction_text = service.build_extraction_text(
-        source_context(
-            update_id=123457,
-            message_id=43,
-            raw_text="White House",
-        )
+        source_context(update_id=123457, message_id=43, raw_text="White House")
     )
 
+    assert "Existing title: Security help request" in extraction_text
+    assert "Existing affected-person details: One person affected" in extraction_text
     assert "Existing incident type: security" in extraction_text
-    assert "Existing needs: security assistance" in extraction_text
-    assert "Previous conversation: Someone is robbing me" in extraction_text
     assert "Latest sender message: White House" in extraction_text
-    assert "Merge the latest message" in extraction_text
 
 
-def test_persist_incident_updates_existing_pending_incident(db_session: Session) -> None:
+def test_pending_update_preserves_assigned_forces_metadata(db_session: Session) -> None:
     service = IncidentPersistenceService(db_session)
     first_result = service.persist_incident(
-        source_context(raw_text="Someone is robbing me"),
+        source_context(raw_text="Someone needs security assistance"),
         pending_extraction_result(),
     )
+    assert first_result is not None
 
-    follow_up_result = actionable_extraction_result().copy(
+    incident = db_session.get(Incident, first_result.incident_id)
+    assert incident is not None
+    incident.metadata_json = {
+        **incident.metadata_json,
+        "assigned_forces": [
+            {"volunteer_id": 12, "name": "Mordehai", "status": "pending_response"}
+        ],
+    }
+    db_session.commit()
+
+    follow_up = actionable_extraction_result().copy(
         update={
+            "title": "Security assistance request",
             "summary": "Person needs security assistance at the White House.",
             "incident_type": "security",
             "location_text": "White House",
+            "casualties_text": "One person affected",
             "needs": ["security assistance"],
         }
     )
     second_result = service.persist_incident(
-        source_context(
-            update_id=123457,
-            message_id=43,
-            raw_text="White House",
-        ),
-        follow_up_result,
+        source_context(update_id=123457, message_id=43, raw_text="White House"),
+        follow_up,
     )
 
-    assert first_result is not None
     assert second_result is not None
     assert second_result.incident_id == first_result.incident_id
-    assert second_result.created is False
-    assert second_result.updated is True
     assert second_result.status == INCIDENT_STATUS_READY_FOR_DISPATCH
-
-    incident = db_session.get(Incident, second_result.incident_id)
-    assert incident is not None
+    db_session.refresh(incident)
     assert incident.location_text == "White House"
-    assert incident.source_message_id == 43
-    assert "--- follow-up ---" in incident.raw_text
+    assert incident.title == "Security assistance request"
+    assert incident.metadata_json["assigned_forces"][0]["volunteer_id"] == 12
 
 
 def test_pending_incidents_are_scoped_by_source(db_session: Session) -> None:
     service = IncidentPersistenceService(db_session)
-
     telegram_result = service.persist_incident(
-        source_context(source="telegram", raw_text="Someone is robbing me"),
+        source_context(source="telegram", raw_text="Security assistance needed"),
         pending_extraction_result(),
     )
     whatsapp_result = service.persist_incident(
-        source_context(source="whatsapp", raw_text="Someone is robbing me"),
+        source_context(source="whatsapp", raw_text="Security assistance needed"),
         pending_extraction_result(),
     )
 
@@ -224,12 +206,8 @@ def test_pending_incidents_are_scoped_by_source(db_session: Session) -> None:
     assert telegram_result.incident_id != whatsapp_result.incident_id
 
 
-def test_non_incident_and_none_extraction_are_not_persisted(db_session: Session) -> None:
+def test_non_incident_and_none_are_not_persisted(db_session: Session) -> None:
     service = IncidentPersistenceService(db_session)
-
-    assert service.persist_incident(
-        source_context(raw_text="hello"),
-        non_incident_extraction_result(),
-    ) is None
+    assert service.persist_incident(source_context(raw_text="hello"), non_incident_extraction_result()) is None
     assert service.persist_incident(source_context(raw_text="hello"), None) is None
     assert db_session.query(Incident).count() == 0

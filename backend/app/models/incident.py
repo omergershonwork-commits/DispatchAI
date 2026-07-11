@@ -26,7 +26,7 @@ def utc_now() -> datetime:
 
 
 class Incident(Base):
-    """Persisted incident report extracted from Telegram messages."""
+    """Persisted incident report extracted from source messages."""
 
     __tablename__ = "incidents"
 
@@ -37,10 +37,13 @@ class Incident(Base):
     source_chat_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     raw_text: Mapped[str] = mapped_column(Text, nullable=False)
 
+    title: Mapped[str | None] = mapped_column(String(160), nullable=True)
     summary: Mapped[str] = mapped_column(Text, nullable=False)
     incident_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     location_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     urgency: Mapped[str] = mapped_column(String(32), nullable=False, default="unknown")
+    casualties_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Deprecated compatibility field for existing data and clients. New code uses casualties_text.
     people_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     contact_name: Mapped[str | None] = mapped_column(Text, nullable=True)
     phone_number: Mapped[str | None] = mapped_column(Text, nullable=True)

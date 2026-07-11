@@ -1,104 +1,93 @@
 {
   "default_scenario": "general_assistance",
   "fallback_confidence_threshold": 0.7,
+  "urgency_weight_multipliers": {
+    "critical": {"location": 1.2, "response_time": 1.35, "reliability": 1.1},
+    "high": {"location": 1.1, "response_time": 1.15},
+    "medium": {"reliability": 1.05, "inventory_match": 1.05},
+    "low": {"reliability": 1.15, "inventory_match": 1.1, "vehicle_match": 1.05},
+    "unknown": {}
+  },
   "scenarios": [
     {
       "name": "medical_urgent",
-      "description": "Urgent medical help, injury, ambulance-like support, first aid, or life-safety support.",
-      "keywords": ["medical", "injury", "injured", "bleeding", "doctor", "first aid", "ambulance", "medic", "emergency"],
+      "description": "Urgent medical or first-aid assistance.",
+      "keywords": ["medical", "injury", "injured", "doctor", "first aid", "ambulance", "medic", "emergency"],
       "urgencies": ["high", "critical"],
-      "weights": {
-        "location": 0.25,
-        "availability": 0.20,
-        "skill_match": 0.35,
-        "response_time": 0.15,
-        "reliability": 0.05
-      },
-      "preferred_skills": ["medical", "first_aid", "paramedic", "doctor"]
+      "weights": {"location": 0.15, "skill_match": 0.30, "response_time": 0.25, "reliability": 0.15, "inventory_match": 0.10, "vehicle_match": 0.05},
+      "preferred_skills": ["medical", "first_aid", "paramedic", "doctor"],
+      "preferred_inventory": ["first_aid_kit", "medical_kit", "aed", "stretcher"],
+      "preferred_vehicles": ["ambulance", "car", "motorcycle"]
     },
     {
       "name": "security_urgent",
-      "description": "Robbery, assault, threat, violence, or another immediate personal-safety incident.",
-      "keywords": ["security", "robbery", "robbed", "assault", "attack", "threat", "violence", "crime", "unsafe"],
+      "description": "Immediate safety or security support.",
+      "keywords": ["security", "threat", "unsafe", "crime", "robbery"],
       "urgencies": ["high", "critical"],
-      "weights": {
-        "location": 0.30,
-        "availability": 0.25,
-        "skill_match": 0.25,
-        "response_time": 0.15,
-        "reliability": 0.05
-      },
-      "preferred_skills": ["security", "crisis_support", "coordination", "first_aid"]
+      "weights": {"location": 0.20, "skill_match": 0.20, "response_time": 0.25, "reliability": 0.20, "inventory_match": 0.10, "vehicle_match": 0.05},
+      "preferred_skills": ["security", "crisis_support", "coordination", "first_aid"],
+      "preferred_inventory": ["radio", "flashlight", "first_aid_kit"],
+      "preferred_vehicles": ["car", "motorcycle"]
     },
     {
       "name": "disaster_rescue",
-      "description": "Earthquake, building collapse, trapped people, flood, explosion, or urgent rescue.",
-      "keywords": ["earthquake", "collapse", "trapped", "rescue", "flood", "explosion", "debris", "evacuation"],
+      "description": "Natural-disaster and search-and-rescue assistance.",
+      "keywords": ["earthquake", "collapse", "trapped", "rescue", "flood", "debris", "search"],
       "urgencies": ["high", "critical"],
-      "weights": {
-        "location": 0.25,
-        "availability": 0.20,
-        "skill_match": 0.35,
-        "response_time": 0.15,
-        "reliability": 0.05
-      },
-      "preferred_skills": ["rescue", "search_and_rescue", "medical", "evacuation"]
+      "weights": {"location": 0.15, "skill_match": 0.30, "response_time": 0.20, "reliability": 0.10, "inventory_match": 0.20, "vehicle_match": 0.05},
+      "preferred_skills": ["rescue", "search_and_rescue", "medical", "evacuation"],
+      "preferred_inventory": ["rescue_kit", "rope", "helmet", "flashlight", "first_aid_kit"],
+      "preferred_vehicles": ["truck", "four_wheel_drive", "car"]
     },
     {
       "name": "fire_response",
-      "description": "Fire, smoke, burning structures, or explosion-related support.",
-      "keywords": ["fire", "smoke", "burning", "flames", "explosion"],
+      "description": "Fire and smoke response support.",
+      "keywords": ["fire", "smoke", "burning", "flames", "wildfire"],
       "urgencies": ["high", "critical"],
-      "weights": {
-        "location": 0.25,
-        "availability": 0.20,
-        "skill_match": 0.35,
-        "response_time": 0.15,
-        "reliability": 0.05
-      },
-      "preferred_skills": ["fire_response", "rescue", "evacuation", "medical"]
+      "weights": {"location": 0.15, "skill_match": 0.30, "response_time": 0.20, "reliability": 0.10, "inventory_match": 0.20, "vehicle_match": 0.05},
+      "preferred_skills": ["fire_response", "rescue", "evacuation", "medical"],
+      "preferred_inventory": ["fire_extinguisher", "protective_gear", "helmet", "first_aid_kit"],
+      "preferred_vehicles": ["fire_truck", "truck", "car"]
+    },
+    {
+      "name": "evacuation_shelter",
+      "description": "Evacuation and temporary-shelter support.",
+      "keywords": ["evacuation", "evacuate", "shelter", "displaced", "accommodation", "safe place"],
+      "urgencies": ["medium", "high", "critical"],
+      "weights": {"location": 0.20, "skill_match": 0.15, "response_time": 0.15, "reliability": 0.15, "inventory_match": 0.15, "vehicle_match": 0.20},
+      "preferred_skills": ["evacuation", "shelter", "logistics", "transport"],
+      "preferred_inventory": ["blanket", "water", "food", "radio"],
+      "preferred_vehicles": ["bus", "van", "car", "truck"]
     },
     {
       "name": "transport",
-      "description": "Transport, pickup, evacuation ride, delivery by vehicle, or moving people or supplies.",
-      "keywords": ["transport", "ride", "pickup", "car", "drive", "evacuation", "evacuate", "deliver", "delivery"],
+      "description": "Pickup, transport, and delivery support.",
+      "keywords": ["transport", "ride", "pickup", "drive", "delivery", "deliver", "vehicle"],
       "urgencies": ["medium", "high", "critical"],
-      "weights": {
-        "location": 0.35,
-        "availability": 0.20,
-        "skill_match": 0.20,
-        "response_time": 0.20,
-        "reliability": 0.05
-      },
-      "preferred_skills": ["driver", "transport", "vehicle", "evacuation"]
+      "weights": {"location": 0.20, "skill_match": 0.10, "response_time": 0.15, "reliability": 0.10, "inventory_match": 0.05, "vehicle_match": 0.40},
+      "preferred_skills": ["driver", "transport", "delivery", "evacuation"],
+      "preferred_inventory": ["phone_charger", "water"],
+      "preferred_vehicles": ["car", "van", "truck", "motorcycle", "bus"]
     },
     {
       "name": "supplies",
-      "description": "Food, water, medicine, equipment, charging, shelter supplies, or basic logistics.",
-      "keywords": ["food", "water", "medicine", "medication", "supplies", "equipment", "charger", "blanket", "shelter"],
+      "description": "Food, water, medicine, equipment, and basic supply delivery.",
+      "keywords": ["food", "water", "medicine", "medication", "supplies", "equipment", "charger", "blanket"],
       "urgencies": ["low", "medium", "high"],
-      "weights": {
-        "location": 0.30,
-        "availability": 0.25,
-        "skill_match": 0.15,
-        "response_time": 0.20,
-        "reliability": 0.10
-      },
-      "preferred_skills": ["logistics", "supplies", "delivery", "food", "medicine"]
+      "weights": {"location": 0.20, "skill_match": 0.10, "response_time": 0.10, "reliability": 0.10, "inventory_match": 0.30, "vehicle_match": 0.20},
+      "preferred_skills": ["logistics", "supplies", "delivery", "food", "medicine"],
+      "preferred_inventory": ["food", "water", "medicine", "blanket", "battery", "charger"],
+      "preferred_vehicles": ["car", "van", "truck", "motorcycle", "bicycle"]
     },
     {
       "name": "general_assistance",
-      "description": "General help when no stronger scenario matches.",
+      "description": "General assistance when no more specific scenario matches.",
       "keywords": ["help", "assist", "support", "urgent", "problem"],
       "urgencies": ["unknown", "low", "medium", "high", "critical"],
-      "weights": {
-        "location": 0.30,
-        "availability": 0.25,
-        "skill_match": 0.20,
-        "response_time": 0.15,
-        "reliability": 0.10
-      },
-      "preferred_skills": []
+      "weights": {"location": 0.25, "skill_match": 0.20, "response_time": 0.15, "reliability": 0.20, "inventory_match": 0.10, "vehicle_match": 0.10},
+      "preferred_skills": [],
+      "preferred_inventory": [],
+      "preferred_vehicles": []
     }
   ]
 }
