@@ -14,7 +14,8 @@ from app.models.volunteer import (
     Volunteer,
     VolunteerDispatch,
 )
-from app.services.dispatch_matching import DispatchMatchingError, VolunteerMatchingService
+from app.services.dispatch_matching import DispatchMatchingError
+from app.services.geospatial_matching import GeospatialVolunteerMatchingService
 from app.services.incident_assigned_forces import sync_assigned_force
 from app.services.telegram_bot_client import TelegramBotClient, TelegramBotClientError
 from app.services.volunteer_management import VolunteerManagementError, VolunteerManagementService
@@ -39,7 +40,7 @@ class IncidentAutoDispatchService:
     def __init__(self, db: Session, telegram_bot_client: TelegramBotClient) -> None:
         self.db = db
         self.telegram_bot_client = telegram_bot_client
-        self.matching_service = VolunteerMatchingService(db)
+        self.matching_service = GeospatialVolunteerMatchingService(db)
         self.volunteer_service = VolunteerManagementService(db)
 
     def dispatch_ready_incident(self, incident_id: int) -> IncidentAutoDispatchResult:
@@ -82,19 +83,23 @@ class IncidentAutoDispatchService:
             None,
         )
         if recommendation is None:
+            reason = "location_unverified" if batch.scenario == "location_unverified" else "no_available_volunteer"
             return IncidentAutoDispatchResult(
                 incident_id=incident_id,
                 volunteer_id=None,
                 dispatch_id=None,
                 sent=False,
-                reason="no_available_volunteer",
+                reason=reason,
             )
 
         incident = self.db.get(Incident, incident_id)
         if incident is None:
             raise IncidentAutoDispatchError("Incident was not found after matching.")
 
-        message_text = self._build_dispatch_message(incident)
+        message_text = self._build_dispatch_message(
+            incident,
+            recommendation.score_breakdown.get("distance_km"),
+        )
         try:
             dispatch = self.volunteer_service.create_dispatch_request(
                 volunteer_id=recommendation.volunteer_id,
@@ -109,6 +114,7 @@ class IncidentAutoDispatchService:
                 volunteer,
                 status="pending_response",
                 dispatch_id=dispatch.dispatch_id,
+                distance_km=recommendation.score_breakdown.get("distance_km"),
             )
 
             recommendation_row = self.db.get(DispatchRecommendation, recommendation.recommendation_id)
@@ -127,13 +133,15 @@ class IncidentAutoDispatchService:
             reason="offer_sent",
         )
 
-    def _build_dispatch_message(self, incident: Incident) -> str:
+    def _build_dispatch_message(self, incident: Incident, distance_km: float | None = None) -> str:
         needs = ", ".join(incident.needs or []) or "general assistance"
         affected = incident.casualties_text or "not specified"
+        distance_line = f"Estimated distance: {float(distance_km):.1f} km\n" if distance_km is not None else ""
         return (
             "New volunteer dispatch offer\n"
             f"Title: {incident.title or incident.incident_type or 'Incident'}\n"
             f"Location: {incident.location_text or 'unknown'}\n"
+            f"{distance_line}"
             f"Summary: {incident.summary}\n"
             f"Urgency: {incident.urgency}\n"
             f"Affected people: {affected}\n"
