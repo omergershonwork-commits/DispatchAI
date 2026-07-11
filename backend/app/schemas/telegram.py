@@ -26,6 +26,15 @@ class TelegramChat(BaseModel):
     last_name: str | None = Field(default=None, description="Private chat last name, when available.")
 
 
+class TelegramLocation(BaseModel):
+    """GPS coordinates attached to a Telegram message."""
+
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+    horizontal_accuracy: float | None = Field(default=None, ge=0)
+    live_period: int | None = Field(default=None, ge=0)
+
+
 class TelegramMessage(BaseModel):
     """Telegram message subset required by the backend ingestion skeleton."""
 
@@ -38,6 +47,7 @@ class TelegramMessage(BaseModel):
         description="Telegram sender metadata. Uses alias because 'from' is reserved in Python.",
     )
     text: str | None = Field(default=None, description="Plain text message content, when the update contains text.")
+    location: TelegramLocation | None = Field(default=None, description="Shared GPS location, when present.")
 
 
 class TelegramWebhookUpdate(BaseModel):
@@ -56,6 +66,7 @@ class TelegramWebhookAccepted(BaseModel):
     message_id: int | None = Field(default=None, description="Telegram message identifier, when the update contains a message.")
     chat_id: int | None = Field(default=None, description="Telegram chat identifier, when the update contains a message.")
     has_text: bool = Field(default=False, description="Whether the accepted update contains text content.")
+    has_location: bool = Field(default=False, description="Whether the accepted update contains GPS coordinates.")
     extraction: IncidentExtractionResult | None = Field(default=None, description="Incident extraction result for text messages, when extraction succeeds.")
     extraction_error: str | None = Field(default=None, description="Safe extraction error code when extraction fails after webhook acceptance.")
     incident_id: int | None = Field(default=None, description="Persisted incident identifier, when an incident is created or updated.")
