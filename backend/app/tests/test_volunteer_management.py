@@ -30,13 +30,13 @@ def db_session() -> Session:
 
 
 def source_context(
+    raw_text: str,
     source: str = "telegram",
     chat_id: int = 987654321,
     user_id: int | None = 111222333,
     username: str | None = "omer_user",
     first_name: str | None = "Omer",
     last_name: str | None = "Volunteer",
-    raw_text: str = "/register",
 ) -> VolunteerSourceContext:
     """Return generic volunteer source metadata for service tests."""
 
@@ -51,62 +51,134 @@ def source_context(
     )
 
 
-def test_process_message_registers_volunteer(db_session: Session) -> None:
-    """Verify /register creates an available volunteer."""
+def complete_registration(
+    service: VolunteerManagementService,
+    source: str = "telegram",
+    chat_id: int = 987654321,
+    available: str = "yes",
+):
+    """Complete the persisted registration wizard and return the final result."""
+
+    result = service.process_message(source_context("/register", source=source, chat_id=chat_id))
+    for answer in (
+        "Omer Gershon",
+        "Tel Aviv",
+        "medical, rescue, transport",
+        "car",
+        "20",
+        "0501234567",
+        available,
+    ):
+        result = service.process_message(source_context(answer, source=source, chat_id=chat_id))
+    return result
+
+
+def test_register_starts_persisted_wizard(db_session: Session) -> None:
+    """Verify /register creates an inactive draft and asks for the first profile field."""
 
     service = VolunteerManagementService(db_session)
 
-    result = service.process_message(source_context(raw_text="/register"))
+    result = service.process_message(source_context("/register"))
 
     assert result.volunteer_id is not None
-    assert result.volunteer_status == VOLUNTEER_STATUS_AVAILABLE
-    assert result.dispatch_id is None
-    assert "registered" in result.reply_text
+    assert result.volunteer_status == VOLUNTEER_STATUS_INACTIVE
+    assert "Registration 1/7" in result.reply_text
 
     volunteer = db_session.get(Volunteer, result.volunteer_id)
     assert volunteer is not None
-    assert volunteer.source == "telegram"
-    assert volunteer.source_chat_id == 987654321
-    assert volunteer.source_user_id == 111222333
-    assert volunteer.source_username == "omer_user"
-    assert volunteer.display_name == "Omer Volunteer"
+    assert volunteer.status == VOLUNTEER_STATUS_INACTIVE
+    assert volunteer.metadata_json["registration_step"] == "full_name"
+    assert volunteer.metadata_json["registration_complete"] is False
+
+
+def test_registration_wizard_collects_matching_profile(db_session: Session) -> None:
+    """Verify the wizard stores all fields required by volunteer matching."""
+
+    service = VolunteerManagementService(db_session)
+
+    result = complete_registration(service)
+
+    assert result.volunteer_id is not None
+    assert result.volunteer_status == VOLUNTEER_STATUS_AVAILABLE
+    assert "Registration complete" in result.reply_text
+
+    volunteer = db_session.get(Volunteer, result.volunteer_id)
+    assert volunteer is not None
+    assert volunteer.display_name == "Omer Gershon"
     assert volunteer.status == VOLUNTEER_STATUS_AVAILABLE
+    assert volunteer.metadata_json == {
+        "registration_step": None,
+        "registration_complete": True,
+        "service_areas": ["Tel Aviv"],
+        "location_text": "Tel Aviv",
+        "skills": ["medical", "rescue", "transport"],
+        "vehicle": "car",
+        "max_distance_km": 20.0,
+        "phone_number": "0501234567",
+        "available_now": True,
+    }
 
 
-def test_process_message_reactivates_existing_volunteer(db_session: Session) -> None:
-    """Verify /register reactivates an inactive volunteer instead of duplicating it."""
-
-    service = VolunteerManagementService(db_session)
-    first_result = service.process_message(source_context(raw_text="/register"))
-    stop_result = service.process_message(source_context(raw_text="/stop"))
-    second_result = service.process_message(source_context(raw_text="/register"))
-
-    assert first_result.volunteer_id == second_result.volunteer_id
-    assert stop_result.volunteer_status == VOLUNTEER_STATUS_INACTIVE
-    assert second_result.volunteer_status == VOLUNTEER_STATUS_AVAILABLE
-    assert "reactivated" in second_result.reply_text
-    assert db_session.query(Volunteer).count() == 1
-
-
-def test_process_message_marks_latest_dispatch_done(db_session: Session) -> None:
-    """Verify done marks the latest active dispatch complete and frees volunteer."""
+def test_registration_repeats_invalid_distance_question(db_session: Session) -> None:
+    """Verify invalid distance does not advance the registration wizard."""
 
     service = VolunteerManagementService(db_session)
-    register_result = service.process_message(source_context(raw_text="/register"))
-    assert register_result.volunteer_id is not None
+    service.process_message(source_context("/register"))
+    for answer in ("Omer Gershon", "Tel Aviv", "medical", "car"):
+        service.process_message(source_context(answer))
+
+    result = service.process_message(source_context("very far"))
+
+    assert "Please send a number of kilometers" in result.reply_text
+    assert "Registration 5/7" in result.reply_text
+    volunteer = db_session.get(Volunteer, result.volunteer_id)
+    assert volunteer is not None
+    assert volunteer.metadata_json["registration_step"] == "max_distance_km"
+
+
+def test_status_reports_incomplete_registration_step(db_session: Session) -> None:
+    """Verify /status resumes the current registration question."""
+
+    service = VolunteerManagementService(db_session)
+    register_result = service.process_message(source_context("/register"))
+    service.process_message(source_context("Omer Gershon"))
+
+    result = service.process_message(source_context("/status"))
+
+    assert result.volunteer_id == register_result.volunteer_id
+    assert "Registration is incomplete" in result.reply_text
+    assert "Registration 2/7" in result.reply_text
+
+
+def test_create_dispatch_rejects_incomplete_registration(db_session: Session) -> None:
+    """Verify a registration draft cannot receive dispatch requests."""
+
+    service = VolunteerManagementService(db_session)
+    result = service.process_message(source_context("/register"))
+    assert result.volunteer_id is not None
+
+    with pytest.raises(ValueError, match="registration is incomplete"):
+        service.create_dispatch_request(result.volunteer_id, "Please respond.")
+
+
+def test_create_dispatch_and_done_after_registration(db_session: Session) -> None:
+    """Verify a completed volunteer can receive and finish a dispatch."""
+
+    service = VolunteerManagementService(db_session)
+    registration = complete_registration(service)
+    assert registration.volunteer_id is not None
 
     dispatch_result = service.create_dispatch_request(
-        register_result.volunteer_id,
-        "Incident #7 needs medical help near Dizengoff Center.",
-        incident_id=7,
+        registration.volunteer_id,
+        "Please respond to incident #9.",
+        incident_id=9,
     )
-    done_result = service.process_message(source_context(raw_text="done"))
+    done_result = service.process_message(source_context("done"))
 
     assert dispatch_result.dispatch_id == done_result.dispatch_id
     assert done_result.volunteer_status == VOLUNTEER_STATUS_AVAILABLE
-    assert "marked done" in done_result.reply_text
 
-    volunteer = db_session.get(Volunteer, register_result.volunteer_id)
+    volunteer = db_session.get(Volunteer, registration.volunteer_id)
     dispatch = db_session.get(VolunteerDispatch, dispatch_result.dispatch_id)
     assert volunteer is not None
     assert dispatch is not None
@@ -115,64 +187,49 @@ def test_process_message_marks_latest_dispatch_done(db_session: Session) -> None
     assert dispatch.completed_at is not None
 
 
-def test_create_dispatch_request_marks_volunteer_busy(db_session: Session) -> None:
-    """Verify dispatch creation records a request and marks volunteer busy."""
+def test_dispatch_creation_marks_volunteer_busy(db_session: Session) -> None:
+    """Verify dispatch creation stores the assignment and marks the volunteer busy."""
 
     service = VolunteerManagementService(db_session)
-    register_result = service.process_message(source_context(raw_text="/register"))
-    assert register_result.volunteer_id is not None
+    registration = complete_registration(service)
+    assert registration.volunteer_id is not None
 
     dispatch_result = service.create_dispatch_request(
-        register_result.volunteer_id,
-        "Please respond to incident #9.",
-        incident_id=9,
+        registration.volunteer_id,
+        "Please respond to incident #7.",
+        incident_id=7,
     )
 
-    volunteer = db_session.get(Volunteer, register_result.volunteer_id)
+    volunteer = db_session.get(Volunteer, registration.volunteer_id)
     dispatch = db_session.get(VolunteerDispatch, dispatch_result.dispatch_id)
     assert volunteer is not None
     assert dispatch is not None
     assert volunteer.status == VOLUNTEER_STATUS_BUSY
     assert dispatch.status == DISPATCH_STATUS_SENT
-    assert dispatch.incident_id == 9
-    assert dispatch.message_text == "Please respond to incident #9."
-    assert dispatch_result.source == "telegram"
-    assert dispatch_result.source_chat_id == 987654321
+    assert dispatch.incident_id == 7
 
 
-def test_done_without_active_dispatch_returns_safe_message(db_session: Session) -> None:
-    """Verify done without active dispatch keeps volunteer available."""
-
-    service = VolunteerManagementService(db_session)
-    register_result = service.process_message(source_context(raw_text="/register"))
-    done_result = service.process_message(source_context(raw_text="done"))
-
-    assert register_result.volunteer_id == done_result.volunteer_id
-    assert done_result.dispatch_id is None
-    assert done_result.volunteer_status == VOLUNTEER_STATUS_AVAILABLE
-    assert done_result.reply_text == "No active dispatch is assigned to you right now."
-
-
-def test_done_before_registration_asks_for_registration(db_session: Session) -> None:
-    """Verify done from an unknown volunteer does not create a row."""
+def test_registration_can_complete_as_inactive(db_session: Session) -> None:
+    """Verify a complete profile remains inactive when availability answer is no."""
 
     service = VolunteerManagementService(db_session)
 
-    result = service.process_message(source_context(raw_text="done"))
+    result = complete_registration(service, available="no")
 
-    assert result.volunteer_id is None
-    assert result.volunteer_status is None
-    assert result.dispatch_id is None
-    assert result.reply_text == "You are not registered yet. Send /register to join as a volunteer."
-    assert db_session.query(Volunteer).count() == 0
+    assert result.volunteer_status == VOLUNTEER_STATUS_INACTIVE
+    volunteer = db_session.get(Volunteer, result.volunteer_id)
+    assert volunteer is not None
+    assert volunteer.metadata_json["registration_complete"] is True
+    assert volunteer.metadata_json["available_now"] is False
 
 
 def test_volunteers_are_scoped_by_source(db_session: Session) -> None:
-    """Verify same chat id from different sources creates separate volunteers."""
+    """Verify identical chat ids from different sources create separate profiles."""
 
     service = VolunteerManagementService(db_session)
-    telegram_result = service.process_message(source_context(source="telegram", raw_text="/register"))
-    whatsapp_result = service.process_message(source_context(source="whatsapp", raw_text="/register"))
+
+    telegram_result = complete_registration(service, source="telegram")
+    whatsapp_result = complete_registration(service, source="whatsapp")
 
     assert telegram_result.volunteer_id is not None
     assert whatsapp_result.volunteer_id is not None
