@@ -9,7 +9,7 @@ from app.api.health import router as health_router
 from app.api.telegram import router as telegram_router
 from app.api.volunteer_telegram import router as volunteer_telegram_router
 from app.core.config import settings
-from app.db.session import SessionLocal, get_engine
+from app.db.session import SessionLocal, ensure_database_schema, get_engine
 from app.services.dispatch_lifecycle import DispatchLifecycleError, DispatchLifecycleService
 from app.services.telegram_bot_client import TelegramBotClient
 
@@ -47,6 +47,8 @@ async def _dispatch_timeout_loop() -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    await asyncio.to_thread(ensure_database_schema)
+
     task: asyncio.Task | None = None
     if settings.dispatch_timeout_poll_seconds > 0:
         task = asyncio.create_task(_dispatch_timeout_loop())
