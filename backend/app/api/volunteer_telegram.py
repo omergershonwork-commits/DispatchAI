@@ -3,8 +3,10 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.db.session import get_db
+from app.models.incident import Incident
 from app.schemas.telegram import TelegramWebhookUpdate
 from app.schemas.volunteer import VolunteerWebhookAccepted
+from app.services.dispatch_lifecycle import DispatchLifecycleError, DispatchLifecycleService
 from app.services.incident_auto_dispatch import IncidentAutoDispatchError, IncidentAutoDispatchService
 from app.services.telegram_bot_client import TelegramBotClient, TelegramBotClientError
 from app.services.volunteer_management import (
@@ -45,6 +47,15 @@ def get_volunteer_auto_dispatch_service(
     )
 
 
+def get_dispatch_lifecycle_service(
+    db: Session = Depends(get_db),
+) -> DispatchLifecycleService:
+    return DispatchLifecycleService(
+        db,
+        offer_timeout_seconds=settings.dispatch_offer_timeout_seconds,
+    )
+
+
 @router.post(
     "/telegram/volunteers",
     response_model=VolunteerWebhookAccepted,
@@ -53,13 +64,14 @@ def get_volunteer_auto_dispatch_service(
 def receive_volunteer_telegram_webhook(
     update: TelegramWebhookUpdate,
     volunteer_service: VolunteerManagementService = Depends(get_volunteer_management_service),
+    lifecycle_service: DispatchLifecycleService = Depends(get_dispatch_lifecycle_service),
     telegram_bot_client: TelegramBotClient = Depends(get_volunteer_telegram_bot_client),
     incident_bot_client: TelegramBotClient | None = Depends(get_incident_telegram_bot_client),
     auto_dispatch_service: IncidentAutoDispatchService | None = Depends(
         get_volunteer_auto_dispatch_service
     ),
 ) -> VolunteerWebhookAccepted:
-    """Process volunteer registration and dispatch lifecycle messages."""
+    """Process volunteer registration, offer decisions, and assignment progress."""
 
     message = update.message
     command_result: VolunteerCommandResult | None = None
@@ -68,11 +80,12 @@ def receive_volunteer_telegram_webhook(
     telegram_reply_error: str | None = None
 
     if message and message.text and message.text.strip():
+        source_context = build_volunteer_source_context(update)
         try:
-            command_result = volunteer_service.process_message(
-                build_volunteer_source_context(update),
-            )
-        except (VolunteerManagementError, ValueError):
+            command_result = lifecycle_service.process_progress_message(source_context)
+            if command_result is None:
+                command_result = volunteer_service.process_message(source_context)
+        except (VolunteerManagementError, DispatchLifecycleError, ValueError):
             command_error = VOLUNTEER_COMMAND_UNAVAILABLE_ERROR
             command_result = VolunteerCommandResult(
                 volunteer_id=None,
@@ -87,18 +100,19 @@ def receive_volunteer_telegram_webhook(
         except (TelegramBotClientError, ValueError):
             telegram_reply_error = VOLUNTEER_REPLY_UNAVAILABLE_ERROR
 
+        reporter_chat_id = command_result.reporter_chat_id
+        reporter_reply_text = command_result.reporter_reply_text
+        if command_result.dispatch_action == "done":
+            completion_update = lifecycle_service.reporter_update_for_result(command_result)
+            if completion_update is not None:
+                reporter_chat_id, reporter_reply_text = completion_update
+
         if (
-            command_result.dispatch_action == "accepted"
-            and command_result.reporter_source == "telegram"
-            and command_result.reporter_chat_id is not None
-            and command_result.reporter_reply_text
-            and incident_bot_client is not None
-        ):
+            command_result.reporter_source == "telegram"
+            or command_result.dispatch_action == "done"
+        ) and reporter_chat_id is not None and reporter_reply_text and incident_bot_client is not None:
             try:
-                incident_bot_client.send_message(
-                    command_result.reporter_chat_id,
-                    command_result.reporter_reply_text,
-                )
+                incident_bot_client.send_message(reporter_chat_id, reporter_reply_text)
             except (TelegramBotClientError, ValueError):
                 pass
 
@@ -108,8 +122,18 @@ def receive_volunteer_telegram_webhook(
             and auto_dispatch_service is not None
         ):
             try:
-                auto_dispatch_service.dispatch_ready_incident(command_result.incident_id)
-            except IncidentAutoDispatchError:
+                dispatch_result = auto_dispatch_service.dispatch_ready_incident(command_result.incident_id)
+                if (
+                    dispatch_result.reason == "no_available_volunteer"
+                    and incident_bot_client is not None
+                ):
+                    incident = auto_dispatch_service.db.get(Incident, command_result.incident_id)
+                    if incident is not None and incident.source == "telegram":
+                        incident_bot_client.send_message(
+                            incident.source_chat_id,
+                            "No registered volunteer has accepted yet. Your report remains saved. If there is immediate danger, contact local emergency services now.",
+                        )
+            except (IncidentAutoDispatchError, TelegramBotClientError, ValueError):
                 pass
 
     return VolunteerWebhookAccepted(
