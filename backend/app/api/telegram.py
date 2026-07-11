@@ -18,25 +18,21 @@ from app.services.telegram_bot_client import TelegramBotClient, TelegramBotClien
 EXTRACTION_UNAVAILABLE_ERROR = "incident_extraction_unavailable"
 INCIDENT_PERSISTENCE_UNAVAILABLE_ERROR = "incident_persistence_unavailable"
 TELEGRAM_REPLY_UNAVAILABLE_ERROR = "telegram_reply_unavailable"
+NEW_COMMANDS = {"/new", "new"}
+CANCEL_COMMANDS = {"/cancel", "cancel"}
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
 
 def get_incident_extraction_service() -> IncidentExtractionService:
-    """Return the incident extraction service used by Telegram webhook ingestion."""
-
     return IncidentExtractionService()
 
 
 def get_incident_persistence_service(db: Session = Depends(get_db)) -> IncidentPersistenceService:
-    """Return the incident persistence service used by webhook ingestion."""
-
     return IncidentPersistenceService(db)
 
 
 def get_telegram_bot_client() -> TelegramBotClient:
-    """Return the Telegram Bot API client used for incident bot replies."""
-
     return TelegramBotClient(bot_token=settings.telegram_incident_bot_token)
 
 
@@ -51,7 +47,7 @@ def receive_telegram_webhook(
     incident_persistence_service: IncidentPersistenceService = Depends(get_incident_persistence_service),
     telegram_bot_client: TelegramBotClient = Depends(get_telegram_bot_client),
 ) -> TelegramWebhookAccepted:
-    """Accept an incident Telegram update, preserve context, persist it, and reply."""
+    """Accept an incident Telegram update, preserve recent context, persist it, and reply."""
 
     message = update.message
     extraction: IncidentExtractionResult | None = None
@@ -63,32 +59,41 @@ def receive_telegram_webhook(
 
     if message and message.text and message.text.strip():
         source_context = build_telegram_source_context(update)
-        try:
-            context_builder = getattr(incident_persistence_service, "build_extraction_text", None)
-            extraction_text = (
-                context_builder(source_context)
-                if callable(context_builder)
-                else source_context.raw_text
-            )
-            extraction = extraction_service.extract_from_text(extraction_text)
-        except (IncidentExtractionError, IncidentPersistenceError, QwenClientError, ValueError):
-            extraction_error = EXTRACTION_UNAVAILABLE_ERROR
+        command = message.text.strip().lower().split(maxsplit=1)[0]
 
-        if extraction is not None:
+        if command in NEW_COMMANDS or command in CANCEL_COMMANDS:
             try:
-                persistence_result = incident_persistence_service.persist_incident(
-                    source_context,
-                    extraction,
+                closed = incident_persistence_service.close_pending_incident(
+                    source_context.source,
+                    source_context.source_chat_id,
                 )
+                reply_text = build_conversation_command_reply(command, closed)
             except (IncidentPersistenceError, ValueError):
                 persistence_error = INCIDENT_PERSISTENCE_UNAVAILABLE_ERROR
+                reply_text = "I could not reset the current report. Please try again."
+        else:
+            try:
+                extraction_text = incident_persistence_service.build_extraction_text(source_context)
+                extraction = extraction_service.extract_from_text(extraction_text)
+            except (IncidentExtractionError, IncidentPersistenceError, QwenClientError, ValueError):
+                extraction_error = EXTRACTION_UNAVAILABLE_ERROR
 
-        reply_text = build_telegram_reply_text(
-            extraction,
-            extraction_error,
-            persistence_result,
-            persistence_error,
-        )
+            if extraction is not None:
+                try:
+                    persistence_result = incident_persistence_service.persist_incident(
+                        source_context,
+                        extraction,
+                    )
+                except (IncidentPersistenceError, ValueError):
+                    persistence_error = INCIDENT_PERSISTENCE_UNAVAILABLE_ERROR
+
+            reply_text = build_telegram_reply_text(
+                extraction,
+                extraction_error,
+                persistence_result,
+                persistence_error,
+            )
+
         try:
             telegram_bot_client.send_message(message.chat.id, reply_text)
             telegram_reply_sent = True
@@ -112,8 +117,6 @@ def receive_telegram_webhook(
 
 
 def build_telegram_source_context(update: TelegramWebhookUpdate) -> SourceIncidentContext:
-    """Translate a Telegram webhook update into generic incident source metadata."""
-
     message = update.message
     if message is None or message.text is None:
         raise ValueError("Telegram text message is required to build source context.")
@@ -125,6 +128,18 @@ def build_telegram_source_context(update: TelegramWebhookUpdate) -> SourceIncide
         source_chat_id=message.chat.id,
         raw_text=message.text,
     )
+
+
+def build_conversation_command_reply(command: str, closed: bool) -> str:
+    """Return a user-facing reply for /new or /cancel."""
+
+    if command in NEW_COMMANDS:
+        if closed:
+            return "The previous unfinished report was closed. Send the new incident details now."
+        return "No unfinished report was active. Send the new incident details now."
+    if closed:
+        return "The unfinished incident report was cancelled."
+    return "There is no unfinished incident report to cancel."
 
 
 def build_telegram_reply_text(
@@ -158,6 +173,7 @@ def build_telegram_reply_text(
         return (
             "Your report has been received. I need one more detail before it can be matched.\n"
             f"{extraction.follow_up_question}\n"
+            "You can send /cancel to discard this unfinished report or /new to start over.\n"
             "If there is immediate danger, contact local emergency services now."
         )
 
