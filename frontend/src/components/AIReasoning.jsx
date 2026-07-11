@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Cpu, CheckCircle2, Clock, MapPin, Activity, ShieldAlert, Navigation } from 'lucide-react';
+import CircularProgress from './CircularProgress';
+import Typewriter from './Typewriter';
 import './AIReasoning.css';
-
-const AIReasoning = ({ incident, volunteers }) => {
+const AIReasoning = ({ incident, volunteers, onVolunteerClick }) => {
   const [visibleSteps, setVisibleSteps] = useState(0);
 
   const steps = [
@@ -41,6 +42,18 @@ const AIReasoning = ({ incident, volunteers }) => {
     );
   }
 
+  const parseSynthesis = (text) => {
+    if (!text) return { analysis: '', action: null };
+    const analysisMatch = text.match(/• ANALYSIS:\n(.*?)(?=\n\n• ACTION TAKEN:|$)/s);
+    const actionMatch = text.match(/• ACTION TAKEN:\n(.*)/s);
+    return {
+      analysis: analysisMatch ? analysisMatch[1].trim() : text,
+      action: actionMatch ? actionMatch[1].trim() : null
+    };
+  };
+
+  const { analysis, action } = parseSynthesis(incident?.aiSynthesis);
+
   return (
     <div className="ai-reasoning-container">
       <div className="dossier-content">
@@ -51,12 +64,29 @@ const AIReasoning = ({ incident, volunteers }) => {
           <div className="raw-message">"{incident.message}"</div>
         </div>
 
-        {/* AI SYNTHESIS */}
-        <div className="dossier-section">
-          <div className="section-title">AI Synthesis</div>
-          <div className="ai-synthesis-text">
-            {incident.aiSynthesis}
+        {/* AI SYNTHESIS - FUTURISTIC MODULES */}
+        <div className="synthesis-nodes">
+          <div className="synthesis-node analysis-node">
+            <div className="node-header">
+              <Activity size={14} className="node-icon pulsing" />
+              <span className="node-title">AI ANALYSIS</span>
+            </div>
+            <div className="node-body">
+              <Typewriter id={`analysis-${incident.id}`} text={analysis} speed={6} />
+            </div>
           </div>
+          
+          {action && (
+            <div className="synthesis-node action-node">
+              <div className="node-header">
+                <Navigation size={14} className="node-icon pulsing" />
+                <span className="node-title">ACTION PROTOCOL</span>
+              </div>
+              <div className="node-body">
+                 <Typewriter id={`action-${incident.id}`} text={action} speed={6} delay={analysis.length * 6 + 150} />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* INTEL GRID */}
@@ -64,14 +94,14 @@ const AIReasoning = ({ incident, volunteers }) => {
           <div className="section-title">Extracted Intel</div>
           <div className="intel-grid">
             <div className="intel-box">
+              <span className="intel-label">AI Confidence</span>
+              <CircularProgress key={incident.id} value={incident.aiConfidence} color="#10b981" />
+            </div>
+            <div className="intel-box">
               <span className="intel-label">Site Access</span>
               <span className="intel-value text-orange">
                 {incident.siteAccessibility}
               </span>
-            </div>
-            <div className="intel-box">
-              <span className="intel-label">AI Confidence</span>
-              <span className="intel-value text-green">{incident.aiConfidence}%</span>
             </div>
             <div className="intel-box">
               <span className="intel-label">Est. Casualties</span>
@@ -81,7 +111,7 @@ const AIReasoning = ({ incident, volunteers }) => {
             </div>
             <div className="intel-box">
               <span className="intel-label">Required Gear</span>
-              <span className="intel-value text-blue" style={{ fontSize: '0.75rem', lineHeight: '1.2' }}>
+              <span className="intel-value text-blue">
                 {incident.requiredEquipment?.join(', ')}
               </span>
             </div>
@@ -127,7 +157,13 @@ const AIReasoning = ({ incident, volunteers }) => {
                 }
 
                 return (
-                  <div key={vol.id} className="mini-volunteer-card" style={{ borderColor: statusColor }}>
+                  <div 
+                    key={vol.id} 
+                    className="mini-volunteer-card" 
+                    style={{ borderColor: statusColor, cursor: 'pointer' }}
+                    onClick={() => onVolunteerClick && onVolunteerClick(vol, true)}
+                    title="Click to view volunteer dossier"
+                  >
                     {statusIcon}
                     <div className="vol-details">
                       <span className="vol-name">{vol.name}</span>

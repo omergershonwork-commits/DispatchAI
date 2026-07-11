@@ -1,3 +1,8 @@
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(-20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
 .incident-card {
   background-color: var(--bg-card);
   border: 1px solid var(--border-color);
@@ -9,6 +14,7 @@
   position: relative;
   overflow: hidden;
   font-family: 'IBM Plex Sans', sans-serif;
+  animation: slideInRight 0.4s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .incident-card:hover {
@@ -45,14 +51,14 @@
 }
 
 .card-time {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Outfit', sans-serif;
   font-size: 0.75rem;
   color: var(--text-secondary);
   flex-grow: 1;
 }
 
 .severity-badge {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Outfit', sans-serif;
   font-size: 0.65rem;
   font-weight: 600;
   padding: 2px 8px;

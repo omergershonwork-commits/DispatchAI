@@ -57,7 +57,7 @@
 }
 
 .volunteer-role {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Outfit', sans-serif;
   font-size: 0.7rem;
   color: var(--text-secondary);
   text-transform: uppercase;
@@ -65,7 +65,7 @@
 }
 
 .volunteer-distance {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Outfit', sans-serif;
   font-size: 0.8rem;
   font-weight: 600;
   color: var(--text-secondary);

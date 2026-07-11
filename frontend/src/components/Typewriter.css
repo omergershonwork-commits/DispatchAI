@@ -1,0 +1,13 @@
+.cursor-blink {
+  display: inline-block;
+  width: 8px;
+  background-color: var(--tactical-green, #10b981);
+  color: transparent;
+  margin-left: 2px;
+  animation: blink 1s step-end infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
