@@ -1,0 +1,46 @@
+:root {
+  /* Tactical Palette */
+  --bg-dark: #0a0a0c; /* Near black */
+  --bg-panel: #121316; /* Very dark grey for panels */
+  --bg-card: #1a1c20; /* Slightly lighter for elements */
+  
+  --text-primary: #e5e7eb;
+  --text-secondary: #8b949e;
+  
+  --tactical-blue: #60a5fa; /* Clear bright blue */
+  --tactical-green: #4ade80; /* Clear bright green */
+  --tactical-red: #f87171; /* Clear bright red */
+  --tactical-orange: #fb923c; /* Clear bright orange */
+  --tactical-yellow: #facc15; /* Clear bright yellow */
+  
+  --border-color: #2d3139;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  margin: 0;
+  font-family: 'IBM Plex Sans', -apple-system, sans-serif;
+  background-color: var(--bg-dark);
+  color: var(--text-primary);
+  overflow: hidden;
+}
+
+/* Sharp Scrollbars */
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-dark);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 0; /* Sharp edges */
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--tactical-blue);
+}

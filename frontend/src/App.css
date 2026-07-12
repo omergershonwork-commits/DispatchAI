@@ -1,0 +1,462 @@
+.app-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+}
+
+/* Top Navigation Bar */
+.topbar {
+  height: 60px;
+  background-color: rgba(18, 19, 22, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  justify-content: space-between;
+  z-index: 1000;
+}
+
+.topbar-logo {
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 2px;
+  display: flex;
+  align-items: center;
+}
+
+.logo-accent {
+  color: var(--tactical-blue);
+  font-family: 'Rajdhani', sans-serif;
+  font-weight: 500;
+  margin-left: 2px;
+}
+
+.topbar-stats {
+  display: flex;
+  gap: 24px;
+}
+
+.stat-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  font-family: 'Outfit', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.stat-value {
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.stat-value.green {
+  color: var(--tactical-green);
+}
+
+/* Main Layout Area */
+.main-content {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* Navigation Rail (Tactical Shell) */
+.nav-rail {
+  width: 64px;
+  background-color: #12141a;
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 16px;
+  gap: 16px;
+  z-index: 600;
+  flex-shrink: 0;
+}
+
+.nav-item {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.nav-item:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+}
+
+.nav-item.active {
+  background-color: rgba(96, 165, 250, 0.15);
+  color: var(--tactical-blue);
+  box-shadow: inset 3px 0 0 var(--tactical-blue);
+}
+
+/* Sidebars Base Style */
+.sidebar-left,
+.sidebar-right {
+  width: 380px;
+  background-color: rgba(18, 19, 22, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  display: flex;
+  flex-direction: column;
+  z-index: 500;
+  border-right: 1px solid var(--border-color);
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.sidebar-right {
+  border-right: none;
+  border-left: 1px solid var(--border-color);
+}
+
+.sidebar-left.collapsed,
+.sidebar-right.collapsed {
+  width: 0;
+  border-color: transparent;
+}
+
+.panel-header {
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border-color);
+  font-family: 'Outfit', sans-serif;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  background-color: rgba(10, 10, 12, 0.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.toggle-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 0 5px;
+  transition: color 0.2s;
+}
+
+.toggle-btn:hover {
+  color: var(--tactical-blue);
+}
+
+.panel-content {
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1;
+  width: 380px;
+}
+
+
+/* Floating open buttons */
+.open-sidebar-btn {
+  position: absolute;
+  top: 80px;
+  background-color: var(--bg-dark);
+  color: var(--tactical-blue);
+  border: 1px solid var(--border-color);
+  padding: 8px 12px;
+  cursor: pointer;
+  z-index: 400;
+  border-radius: 0;
+  /* Sharp */
+  font-family: 'Outfit', sans-serif;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  transition: background-color 0.2s;
+}
+
+.open-sidebar-btn:hover {
+  background-color: var(--bg-panel);
+}
+
+.open-sidebar-btn.left {
+  left: 20px;
+}
+
+.open-sidebar-btn.right {
+  right: 20px;
+}
+
+/* Center Map Container */
+.map-container {
+  flex: 1;
+  min-width: 0;
+  background-color: var(--bg-dark);
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1;
+}
+
+/* =========================================
+   Map Markers & Animations (Tactical)
+   ========================================= */
+
+.custom-icon-wrapper {
+  background: transparent;
+  border: none;
+}
+
+/* Tactical Leaflet Popup */
+.tactical-popup .leaflet-popup-content-wrapper {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+}
+
+.tactical-popup .leaflet-popup-content {
+  margin: 0;
+  width: auto !important;
+}
+
+.tactical-popup .leaflet-popup-tip-container {
+  display: none;
+}
+
+/* Radar Sweep Animation for Emergencies */
+@keyframes radarSweep {
+  0% {
+    transform: scale(0.5);
+    opacity: 1;
+    border-width: 2px;
+  }
+
+  100% {
+    transform: scale(2);
+    opacity: 0;
+    border-width: 1px;
+  }
+}
+
+.emergency-marker {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: var(--bg-dark);
+  background-color: var(--bg-fallback);
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  /* Circle shape */
+}
+
+.emergency-marker::after {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  bottom: -2px;
+  border: 2px solid var(--bg-fallback);
+  border-radius: 50%;
+  /* Circle shape */
+  animation: radarSweep 1.5s ease-out infinite;
+}
+
+.emergency-marker.critical {
+  --bg-fallback: var(--tactical-red);
+}
+
+.emergency-marker.high {
+  --bg-fallback: var(--tactical-orange);
+}
+
+.emergency-marker.medium {
+  --bg-fallback: var(--tactical-yellow);
+}
+
+.emergency-marker.low {
+  --bg-fallback: var(--tactical-blue);
+}
+
+.emergency-marker.selected {
+  z-index: 1000 !important;
+  box-shadow: 0 0 25px 8px var(--bg-fallback);
+  border: 2px solid #ffffff;
+}
+
+.emergency-marker.selected::after {
+  animation: radarSweep 0.8s ease-out infinite;
+  /* faster pulse when selected */
+  border-width: 3px;
+  border-color: #ffffff;
+}
+
+/* Volunteer Marker */
+.volunteer-marker {
+  background-color: var(--tactical-green);
+  border: 1px solid var(--bg-dark);
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  /* Circle shape */
+  transition: all 0.3s;
+}
+
+.volunteer-marker.dispatched {
+  background-color: var(--tactical-blue);
+}
+
+.volunteer-marker.selected {
+  z-index: 999 !important;
+  box-shadow: 0 0 15px 5px var(--tactical-green);
+  border: 2px solid #ffffff;
+}
+
+.volunteer-marker.dispatched.selected {
+  box-shadow: 0 0 15px 5px var(--tactical-blue);
+}
+
+/* Clean Minimal Routing Line */
+.route-line-bg {
+  opacity: 0.15;
+}
+
+.animated-route-line {
+  stroke-dasharray: 10 20;
+  /* smooth dashed flow */
+  animation: flowLine 1.5s linear infinite;
+  opacity: 0.9;
+  filter: drop-shadow(0 0 5px var(--tactical-blue));
+}
+
+@keyframes flowLine {
+  to {
+    stroke-dashoffset: -30;
+  }
+}
+
+.animated-route-line-accepted {
+  stroke-dasharray: 20 15;
+  animation: flowLine 0.8s linear infinite;
+  opacity: 1;
+  filter: drop-shadow(0 0 8px var(--tactical-green));
+}
+
+/* --- Command & Control Override Mode --- */
+.command-mode-toggle {
+  position: absolute;
+  top: 50%;
+  right: -24px;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  opacity: 0.1;
+  /* Very hidden */
+  cursor: pointer;
+  padding: 4px;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.command-mode-toggle:hover {
+  opacity: 0.8;
+  color: var(--tactical-red);
+}
+
+.command-mode-active .command-mode-toggle {
+  opacity: 1;
+  color: var(--tactical-red);
+  text-shadow: 0 0 5px rgba(239, 68, 68, 0.5);
+}
+
+.command-mode-active .map-container {
+  box-shadow: inset 0 0 30px rgba(239, 68, 68, 0.3);
+}
+
+.command-mode-banner {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: rgba(239, 68, 68, 0.15);
+  border: 1px solid var(--tactical-red);
+  color: var(--tactical-red);
+  padding: 6px 16px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 2px;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+  animation: pulse-red 2s infinite;
+  pointer-events: none;
+}
+
+@keyframes pulse-red {
+  0% {
+    opacity: 0.7;
+    box-shadow: 0 0 0 rgba(239, 68, 68, 0);
+  }
+
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
+  }
+
+  100% {
+    opacity: 0.7;
+    box-shadow: 0 0 0 rgba(239, 68, 68, 0);
+  }
+}
+
+.dispatching .leaflet-container,
+.dispatching .emergency-marker,
+.dispatching .volunteer-marker {
+  cursor: crosshair !important;
+}
+
+/* Volunteer Hover Tooltip */
+.leaflet-tooltip.volunteer-tooltip {
+  background: #0f172a;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #e2e8f0;
+  border-radius: 20px;
+  padding: 4px 12px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+  font-family: 'Outfit', sans-serif;
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+
+.leaflet-tooltip.volunteer-tooltip::before {
+  border-top-color: #0f172a;
+}
+
+/* Specific override for incidents */
+.leaflet-tooltip.incident-tooltip {
+  border-radius: 8px;
+  padding: 8px 14px;
+}
