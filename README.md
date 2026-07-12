@@ -1,131 +1,120 @@
 # DispatchAI
 
-DispatchAI is an AI-assisted emergency coordination platform that converts unstructured incident reports into structured, actionable dispatch decisions.
+AI-assisted incident intake and volunteer dispatch for high-pressure emergency coordination.
 
-A reporter can send a message through Telegram, the system extracts the incident type, urgency, location, affected people, and required assistance, then ranks eligible volunteers based on availability, skills, equipment, vehicle, reliability, response time, and geographic distance.
+DispatchAI receives incident reports through Telegram, uses Qwen to extract structured incident data, applies deterministic eligibility rules, ranks suitable volunteers, and manages the dispatch lifecycle through Telegram and dashboard APIs.
 
-> DispatchAI is a coordination prototype. It does not replace official emergency services, dispatch centers, police, fire departments, medical services, or trained human operators.
+> **Safety notice**  
+> DispatchAI is a coordination platform and hackathon prototype. It does not replace official emergency services, trained dispatchers, police, fire departments, medical services, or human approval in safety-critical operations.
 
-## Why DispatchAI
+## Product Summary
 
-During emergencies, coordination systems can become overloaded. Reports arrive in free text, locations can be unclear, volunteer availability changes quickly, and dispatchers must compare multiple candidates under time pressure.
+Emergency reports are often incomplete, multilingual, emotional, or spread across multiple messages. DispatchAI reduces the operational burden by turning those reports into validated incident records and explainable volunteer recommendations.
 
-DispatchAI reduces this operational burden by turning a message such as:
+The platform is designed around three principles:
 
-```text
-There is a building fire near the mall in Nahariya.
-One person is trapped and needs rescue.
-```
+1. Understand the incident accurately.
+2. Exclude responders who are unavailable or ineligible.
+3. Explain why a responder was selected or rejected.
 
-into structured incident data and a ranked volunteer recommendation.
-
-The system is designed around three principles:
-
-1. **Understand the incident accurately**
-2. **Exclude volunteers who are not actually eligible**
-3. **Explain why a volunteer was selected or rejected**
-
-## Core Features
+## Core Capabilities
 
 - Telegram incident-reporting bot
-- Telegram volunteer-management bot
+- Telegram volunteer registration and status management
 - Qwen-based structured incident extraction
-- Incident classification and urgency estimation
-- GPS location support through Telegram
+- Multi-message incident context
+- Incident type and urgency classification
+- Telegram GPS support
 - Text-address geocoding
-- Geographic distance calculation
-- Hard volunteer travel-radius enforcement
-- Skill-aware volunteer matching
-- Equipment and vehicle-aware matching
-- Availability and active-dispatch filtering
-- Volunteer trust and response-time scoring
-- Automatic dispatch offers through Telegram
-- Offer timeout and acceptance lifecycle
+- Haversine distance calculation
+- Hard travel-radius enforcement
+- Skill, inventory, vehicle, response-time, and reliability scoring
+- Automatic Telegram dispatch offers
+- Accept, decline, timeout, and completion lifecycle
 - Incident and volunteer dashboard APIs
-- Structured operational logging
-- Deterministic dispatch scenario tests
-- Live Qwen quality evaluation with a success-rate gate
+- Structured operational logs
+- Deterministic end-to-end dispatch tests
+- Docker and GitHub Actions validation
 
 ## AMD Integration
 
-DispatchAI uses a Qwen instruction model running in an AMD developer notebook environment.
+DispatchAI runs its Qwen instruction model in an AMD developer notebook environment.
 
-The model is responsible for converting unstructured emergency messages into validated structured data such as:
+The model converts unstructured reports into a validated schema containing:
 
-- incident title
-- summary
+- title and summary
 - incident type
 - urgency
-- affected-person description
 - location
+- affected-person description
 - requested assistance
 - confidence
-- missing information
+- missing fields
 - follow-up question
 
-### Why strong AMD compute matters
+### Why AMD compute matters
 
-This is not a simple text-classification task. Incident reports can be incomplete, multilingual, emotionally written, inconsistent, or spread across multiple messages.
+Incident understanding is more demanding than simple classification. Reports can contain uncertainty, corrections, mixed languages, missing details, and several facts that must be reconciled.
 
-The model must reason across the full report and avoid inventing missing facts. In a safety-related workflow, poor extraction can cause the wrong volunteer profile to be prioritized or an important detail to be missed.
+The AMD notebook provides the VRAM and compute capacity required to run a stronger reasoning-capable Qwen model. This improves extraction quality compared with using a significantly smaller local model.
 
-We used the AMD notebook because larger reasoning-capable models require substantial VRAM and compute capacity. The AMD environment allowed us to run a stronger Qwen model rather than relying on a much smaller local model with weaker extraction quality.
+The model does not directly execute irreversible actions. Its output is validated, persisted, logged, and passed into deterministic eligibility and matching rules that can be reviewed or overridden by operators.
 
-The AI does not directly make irreversible emergency decisions. It produces structured recommendations that can be logged, tested, reviewed, and overridden by human operators.
-
-## How It Works
+## Architecture
 
 ```text
-Reporter sends Telegram message or GPS location
-                    |
-                    v
-        FastAPI Telegram webhook
-                    |
-                    v
-          Qwen incident extraction
-                    |
-                    v
-      Structured and validated incident
-                    |
-                    v
-       Address geocoding or Telegram GPS
-                    |
-                    v
-     Volunteer eligibility hard filters
-                    |
-                    v
-      Weighted volunteer recommendation
-                    |
-                    v
-       Telegram volunteer dispatch offer
-                    |
-                    v
-       Accept / decline / timeout lifecycle
-                    |
-                    v
-       Incident and dashboard state update
+Reporter / Volunteer
+        |
+        v
+Telegram Bot API
+        |
+        v
+FastAPI webhook layer
+        |
+        +---------------------------+
+        |                           |
+        v                           v
+Qwen incident extraction     Volunteer management
+        |                           |
+        +-------------+-------------+
+                      |
+                      v
+            PostgreSQL + PostGIS
+                      |
+                      v
+          Geospatial eligibility filter
+                      |
+                      v
+       Scenario-specific weighted ranking
+                      |
+                      v
+            Telegram dispatch offer
+                      |
+                      v
+       Accept / decline / timeout / done
 ```
 
-## Volunteer Eligibility
+## Volunteer Selection
 
-A volunteer is excluded before scoring when any required condition fails.
+Volunteer selection is split into two stages.
 
-Examples:
+### Hard eligibility filters
+
+A volunteer is excluded before scoring when:
 
 - status is not `available`
-- volunteer is busy
-- volunteer already has a pending dispatch
 - registration is incomplete
-- coordinates are missing when geospatial enforcement is enabled
-- calculated distance exceeds `max_distance_km`
+- the volunteer is busy
+- an open dispatch already exists
+- coordinates are missing while geospatial matching is enabled
+- `max_distance_km` is missing or invalid
+- calculated distance exceeds the allowed radius
 
-This prevents a highly skilled but unavailable or distant volunteer from being selected.
+A highly skilled but unavailable or distant volunteer is therefore never selected.
 
-## Matching Dimensions
+### Weighted ranking
 
-Eligible volunteers are scored using scenario-specific weights.
-
-The current matching dimensions are:
+Eligible volunteers are ranked by:
 
 - location
 - skill match
@@ -134,22 +123,12 @@ The current matching dimensions are:
 - inventory match
 - vehicle match
 
-The relative weights change by incident scenario.
-
-Examples:
-
-- medical emergencies emphasize medical skills and response time
-- fires emphasize fire-response skills and protective equipment
-- transport incidents emphasize vehicle suitability
-- supply incidents emphasize required inventory
-- evacuations emphasize vehicle capacity and logistics skills
+Weights vary by scenario. Medical incidents emphasize medical skills and response time, while transport and evacuation incidents place more weight on vehicle suitability.
 
 ## Supported Scenarios
 
-The current configuration includes:
-
-- medical emergencies
-- security incidents
+- medical emergency
+- security incident
 - disaster rescue
 - fire response
 - evacuation and shelter
@@ -159,232 +138,136 @@ The current configuration includes:
 
 ## Technology Stack
 
-### Backend
+- **Backend:** Python 3.12, FastAPI, SQLAlchemy, Pydantic
+- **Database:** PostgreSQL, PostGIS
+- **AI:** Qwen, OpenAI-compatible chat-completions API
+- **Compute:** AMD developer notebook environment
+- **Messaging:** Telegram Bot API
+- **Location:** Telegram GPS, Nominatim-compatible geocoding
+- **Infrastructure:** Docker, Docker Compose, GitHub Actions
 
-- Python
-- FastAPI
-- SQLAlchemy
-- PostgreSQL
-- PostGIS
-- Pydantic
-
-### AI
-
-- Qwen instruction model
-- OpenAI-compatible chat-completions API
-- AMD developer notebook environment
-
-### Messaging
-
-- Telegram Bot API
-
-### Infrastructure
-
-- Docker
-- Docker Compose
-- GitHub Actions
-
-### Location
-
-- Telegram GPS messages
-- Nominatim-compatible geocoding
-- Haversine distance calculation
-
-## Repository Structure
+## Repository Layout
 
 ```text
 DispatchAI/
 ├── backend/
 │   ├── app/
-│   │   ├── api/                 # FastAPI routes and Telegram webhooks
-│   │   ├── core/                # Configuration and logging
-│   │   ├── db/                  # Database session and schema migration helpers
-│   │   ├── evaluations/         # Live Qwen evaluation cases and scoring
-│   │   ├── models/              # SQLAlchemy models
-│   │   ├── schemas/             # Pydantic contracts
-│   │   ├── services/            # Extraction, matching, dispatch, geocoding
-│   │   └── tests/               # Unit, integration, and dispatch scenario tests
+│   │   ├── api/          # REST endpoints and Telegram webhooks
+│   │   ├── core/         # Configuration and logging
+│   │   ├── db/           # Database session and schema helpers
+│   │   ├── models/       # SQLAlchemy models
+│   │   ├── schemas/      # Pydantic contracts
+│   │   ├── services/     # Extraction, matching, dispatch, geocoding
+│   │   └── tests/        # Unit and integration tests
 │   ├── Dockerfile
 │   └── requirements.txt
 ├── docker-compose.yml
 └── README.md
 ```
 
-## Current Docker Setup
-
-The repository currently includes containers for:
-
-- PostgreSQL with PostGIS
-- FastAPI backend
-
-The Qwen model runs externally in the AMD notebook and is accessed through a configurable OpenAI-compatible endpoint.
-
-A complete `.env.example` and final container configuration will be added before release.
-
 ## Configuration
 
-The backend uses environment variables.
+Configuration is supplied through environment variables. Never commit real tokens or credentials.
 
-### Core
+### Application
 
-```text
-APP_NAME
-ENVIRONMENT
-DATABASE_URL
-LOG_LEVEL
-```
+| Variable | Required | Description |
+|---|---:|---|
+| `APP_NAME` | No | Service name |
+| `ENVIRONMENT` | No | Runtime environment |
+| `DATABASE_URL` | Yes | PostgreSQL connection URL |
+| `LOG_LEVEL` | No | Logging level, default `INFO` |
 
 ### Qwen
 
-```text
-QWEN_BASE_URL
-QWEN_MODEL_NAME
-QWEN_TIMEOUT_SECONDS
-QWEN_REQUEST_HEADERS_MODE
-QWEN_EXTRA_HEADERS_JSON
-```
+| Variable | Required | Description |
+|---|---:|---|
+| `QWEN_BASE_URL` | Yes for live AI | AMD-hosted OpenAI-compatible endpoint |
+| `QWEN_MODEL_NAME` | Yes for live AI | Served Qwen model identifier |
+| `QWEN_TIMEOUT_SECONDS` | No | Request timeout |
+| `QWEN_REQUEST_HEADERS_MODE` | No | `auto`, `none`, or `pinggy` |
+| `QWEN_EXTRA_HEADERS_JSON` | No | Additional headers as JSON |
 
 ### Telegram
 
-```text
-TELEGRAM_INCIDENT_BOT_TOKEN
-TELEGRAM_VOLUNTEER_BOT_TOKEN
-TELEGRAM_API_BASE_URL
-TELEGRAM_TIMEOUT_SECONDS
-```
+| Variable | Required | Description |
+|---|---:|---|
+| `TELEGRAM_INCIDENT_BOT_TOKEN` | Yes for incident bot | Incident bot token |
+| `TELEGRAM_VOLUNTEER_BOT_TOKEN` | Yes for volunteer bot | Volunteer bot token |
+| `TELEGRAM_API_BASE_URL` | No | Telegram API base URL |
+| `TELEGRAM_TIMEOUT_SECONDS` | No | Telegram request timeout |
 
-### Geocoding
+### Geocoding and dispatch
 
-```text
-GEOCODING_ENABLED
-GEOCODING_BASE_URL
-GEOCODING_USER_AGENT
-GEOCODING_TIMEOUT_SECONDS
-GEOCODING_COUNTRY_CODES
-```
+| Variable | Required | Description |
+|---|---:|---|
+| `GEOCODING_ENABLED` | No | Enable address geocoding |
+| `GEOCODING_BASE_URL` | No | Nominatim-compatible endpoint |
+| `GEOCODING_USER_AGENT` | When enabled | Identifying user agent |
+| `GEOCODING_COUNTRY_CODES` | No | Country restriction, for example `il` |
+| `DISPATCH_OFFER_TIMEOUT_SECONDS` | No | Offer timeout |
+| `DISPATCH_TIMEOUT_POLL_SECONDS` | No | Timeout worker interval |
 
-### Dispatch Lifecycle
+## Run with Docker
 
-```text
-DISPATCH_OFFER_TIMEOUT_SECONDS
-DISPATCH_TIMEOUT_POLL_SECONDS
-```
+### Prerequisites
 
-Do not commit real tokens, passwords, or private endpoint credentials.
-
-## Local Development
-
-### Requirements
-
-- Python 3.12+
-- Docker
+- Docker Engine
 - Docker Compose
-- PostgreSQL/PostGIS, or Docker Compose
-- Telegram bot tokens for live Telegram tests
-- accessible Qwen endpoint for live model inference
+- reachable Qwen endpoint for live extraction
+- Telegram bot tokens for live Telegram flows
 
-### Start the database and backend
+### Start
 
 ```bash
-docker compose up --build
+docker compose up --build -d
 ```
 
-### Verify services
+### Verify
 
 ```bash
 curl http://localhost:8000/health
 curl http://localhost:8000/ready
 ```
 
-### Run backend tests
+### Logs
+
+```bash
+docker compose logs -f backend
+```
+
+### Stop
+
+```bash
+docker compose down --remove-orphans
+```
+
+To remove development database volumes:
+
+```bash
+docker compose down -v --remove-orphans
+```
+
+## Local Development
 
 ```bash
 cd backend
+python -m venv .venv
+python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 pytest -q
 ```
 
-## Telegram Demo Flow
+## API Endpoints
 
-### 1. Register volunteers
-
-Each volunteer provides:
-
-- name
-- service area
-- skills
-- vehicle
-- maximum travel distance
-- contact number
-- availability
-
-The volunteer then shares a Telegram GPS location.
-
-### 2. Submit an incident
-
-Example:
+Health:
 
 ```text
-There is a building fire near the mall in Nahariya.
-One person is trapped. We need firefighters and rescue support.
+GET /health
+GET /ready
 ```
 
-The reporter can also send a Telegram location.
-
-### 3. AI extraction
-
-Qwen creates a structured incident containing:
-
-```json
-{
-  "title": "Building Fire",
-  "incident_type": "fire",
-  "urgency": "critical",
-  "location_text": "Nahariya, near the mall",
-  "casualties_text": "One person trapped",
-  "needs": ["fire response", "rescue"]
-}
-```
-
-### 4. Matching
-
-The matcher:
-
-1. removes unavailable volunteers
-2. removes busy volunteers
-3. removes volunteers with pending offers
-4. calculates actual distance
-5. enforces maximum travel radius
-6. applies scenario-specific matching weights
-7. ranks the remaining volunteers
-
-### 5. Dispatch
-
-The selected volunteer receives a Telegram offer containing:
-
-- title
-- location
-- estimated distance
-- summary
-- urgency
-- affected people
-- required help
-
-The volunteer can reply:
-
-```text
-accept
-```
-
-or:
-
-```text
-decline
-```
-
-## Dashboard API
-
-Current dashboard endpoints include:
+Dashboard:
 
 ```text
 GET   /dashboard/incidents
@@ -394,87 +277,45 @@ GET   /dashboard/volunteers/{volunteer_id}
 PATCH /dashboard/volunteers/{volunteer_id}
 ```
 
-Health endpoints:
+## Demo Flow
 
-```text
-GET /health
-GET /ready
-```
+1. Register volunteers through the volunteer bot.
+2. Set skills, vehicle, maximum travel distance, and availability.
+3. Share a Telegram GPS location.
+4. Submit an incident through the incident bot.
+5. Qwen extracts type, urgency, location, casualties, and required help.
+6. The backend excludes unavailable and out-of-range volunteers.
+7. The best eligible volunteer receives the offer.
+8. The volunteer replies `accept`, `decline`, or `done`.
+9. Incident and volunteer state are updated in the database and dashboard.
 
-## Testing Strategy
+## Testing and CI
 
-### Deterministic backend tests
+The required CI pipeline runs:
 
-The standard CI suite covers:
+1. backend dependency installation
+2. backend tests
+3. Docker image build
+4. database and backend startup
+5. `/health` verification
+6. `/ready` verification
+7. stack cleanup
 
-- extraction parsing
-- incident persistence
-- volunteer registration
-- scenario classification
-- weighted matching
-- unavailable-volunteer exclusion
-- busy-volunteer exclusion
-- pending-response exclusion
-- travel-radius exclusion
-- Telegram dispatch creation
-- database state transitions
-- Docker build and startup
-- health and readiness checks
+The deterministic dispatch suite covers:
 
-### End-to-end dispatch scenarios
+- medical, fire, rescue, security, evacuation, transport, supplies, and general assistance
+- unavailable, busy, and pending-response exclusion
+- out-of-range exclusion
+- no-eligible-volunteer behavior
+- recommendation persistence
+- Telegram offer creation
+- volunteer state transitions
 
-The repository includes multiple realistic dispatch scenarios covering:
+Live model evaluation is kept outside the required CI path because the AMD notebook endpoint is external and may not be continuously available.
 
-- medical
-- fire
-- rescue
-- security
-- evacuation
-- transport
-- supplies
-- general assistance
-- no eligible volunteer
+## Observability
 
-The tests verify that the strongest unavailable volunteer is skipped and the strongest eligible volunteer is selected.
-
-### Live Qwen quality gate
-
-A separate GitHub Actions job runs live evaluation cases against the configured Qwen endpoint.
-
-The evaluation checks:
-
-- schema validity
-- incident classification
-- incident type
-- urgency
-- location
-- needs
-- affected-person extraction
-- confidence range
-- title quality
-- create or follow-up decision
-
-The current CI gate requires:
-
-```text
-Success Rate > 90%
-```
-
-For 20 cases:
-
-```text
-18/20 = 90%  -> fail
-19/20 = 95%  -> pass
-20/20 = 100% -> pass
-```
-
-Live evaluation results are uploaded as GitHub Actions artifacts.
-
-## Logging and Explainability
-
-DispatchAI emits structured logs for important decisions.
-
-Examples:
+Structured logs include:
 
 ```text
 geocoding_started
@@ -486,68 +327,58 @@ geospatial_matching_completed
 automatic_dispatch_offer_sent
 ```
 
-This makes it possible to audit why a volunteer was selected or rejected.
+These logs provide an audit trail for matching and dispatch decisions.
 
-## Safety and Limitations
+## Security and Production Hardening
 
-DispatchAI is an experimental coordination system.
+The current implementation validates model output, enforces availability server-side, stores dispatch state transitions, and keeps credentials outside source code.
 
-Current limitations include:
+Before deployment in a real emergency environment, complete:
 
-- AI output can be incorrect or incomplete
-- geocoded addresses can be approximate
-- GPS data can become stale
-- Haversine distance is not road travel time
-- external model and geocoding services can become unavailable
-- current dispatch flow sends one offer at a time
-- dashboard authentication and role-based access control are not complete
-- official emergency-service integration is not implemented
-
-Before real-world deployment, the system would require:
-
-- trained human review
-- formal security testing
-- webhook authentication
-- dashboard authentication and authorization
+- signed and authenticated webhooks
+- dashboard authentication and role-based access control
+- TLS termination
+- managed secret storage
 - encrypted sensitive data
-- audit retention policies
-- redundant infrastructure
-- real routing and estimated-arrival-time services
-- location freshness enforcement
-- legal and emergency-service approval
+- backup and restore procedures
+- formal security testing
+- audit retention and privacy policies
+- human approval rules for safety-critical dispatch
+
+## Deployment Recommendations
+
+For an internet-facing environment:
+
+- run PostgreSQL/PostGIS as a managed or backed-up service
+- place the API behind a TLS-enabled reverse proxy or load balancer
+- restrict dashboard endpoints to authorized operators
+- centralize logs and alerts
+- monitor health, readiness, model latency, Telegram failures, and dispatch errors
+- use immutable image tags and a rollback-capable deployment process
+- maintain separate development, staging, and production environments
+
+## Current Limitations
+
+- AI extraction can be incomplete or incorrect
+- geocoded addresses can be approximate
+- GPS positions can become stale
+- Haversine distance is not road travel time
+- the AMD notebook and geocoding service are external dependencies
+- the current dispatch flow sends one offer at a time
+- production authentication and authorization are not yet complete
+- official emergency-service integrations are not included
 
 ## Roadmap
 
-- volunteer GPS freshness enforcement
-- top-three parallel offers
-- first-acceptance-wins transaction handling
-- cancellation of remaining offers
-- real driving-time routing
+- volunteer location freshness enforcement
+- road-route travel-time estimation
+- parallel top-candidate offers with atomic first acceptance
 - dispatcher assignment and reassignment controls
-- dashboard authentication and RBAC
-- audit trail and operational analytics
-- multilingual extraction evaluation
-- resilient Qwen deployment
-- full production containerization
-
-## Hackathon Demo Story
-
-The recommended demo shows:
-
-1. two or more volunteers registered
-2. one volunteer unavailable or outside the allowed radius
-3. a reporter sends an emergency message
-4. Qwen extracts the structured incident
-5. the matcher excludes the ineligible volunteer
-6. the best eligible volunteer receives an offer
-7. the volunteer accepts
-8. the incident and volunteer statuses update
-9. logs explain the dispatch decision
-
-## Team
-
-DispatchAI was built for the AMD Developer Hackathon: Act II.
+- webhook signature verification
+- dashboard RBAC
+- managed secrets and deployment manifests
+- operational metrics and alerting
 
 ## License
 
-A project license will be added before final public release.
+Add the project license before public distribution or reuse.
