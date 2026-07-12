@@ -62,3 +62,66 @@ jobs:
       - name: Stop Docker Compose stack
         if: always()
         run: docker compose down --remove-orphans
+
+  live-qwen-evaluation:
+    name: Live Qwen Evaluation (SR > 90%)
+    needs: backend-test-and-compose
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    env:
+      QWEN_BASE_URL: ${{ secrets.QWEN_BASE_URL }}
+      QWEN_MODEL_NAME: ${{ secrets.QWEN_MODEL_NAME }}
+      QWEN_EXTRA_HEADERS_JSON: ${{ secrets.QWEN_EXTRA_HEADERS_JSON }}
+      QWEN_REQUEST_HEADERS_MODE: none
+      QWEN_TIMEOUT_SECONDS: "120"
+      QWEN_EVAL_RETRIES: "2"
+      QWEN_EVAL_DELAY_SECONDS: "0.5"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate live Qwen configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${QWEN_BASE_URL}" ]]; then
+            echo "::error::Repository secret QWEN_BASE_URL is required."
+            exit 1
+          fi
+          if [[ -z "${QWEN_MODEL_NAME}" ]]; then
+            echo "::error::Repository secret QWEN_MODEL_NAME is required."
+            exit 1
+          fi
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
+
+      - name: Run live Qwen quality gate
+        working-directory: backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/run_live_qwen_eval.py \
+            --threshold 0.90 \
+            --report qwen-live-evaluation.json \
+            | tee qwen-live-evaluation.log
+
+      - name: Upload live Qwen report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen-live-evaluation-${{ github.run_id }}
+          path: |
+            backend/qwen-live-evaluation.json
+            backend/qwen-live-evaluation.log
+          if-no-files-found: warn
+          retention-days: 30
