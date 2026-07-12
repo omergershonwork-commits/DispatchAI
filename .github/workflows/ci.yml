@@ -36,7 +36,17 @@ jobs:
 
       - name: Run backend tests
         working-directory: backend
-        run: pytest -q
+        run: |
+          set -o pipefail
+          pytest -q 2>&1 | tee pytest-output.txt
+
+      - name: Upload pytest diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-output
+          path: backend/pytest-output.txt
+          if-no-files-found: ignore
 
       - name: Build and start backend stack
         run: docker compose up --build -d db backend
