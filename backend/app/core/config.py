@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 
 APP_NAME = os.getenv("APP_NAME", "ai-rescue-backend")
 ENVIRONMENT = os.getenv("ENVIRONMENT", "local")
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").strip().upper()
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
@@ -35,6 +36,7 @@ DISPATCH_TIMEOUT_POLL_SECONDS = int(os.getenv("DISPATCH_TIMEOUT_POLL_SECONDS", "
 class Settings:
     app_name: str = field(default=APP_NAME)
     environment: str = field(default=ENVIRONMENT)
+    log_level: str = field(default=LOG_LEVEL)
     database_url: str = field(default=DATABASE_URL)
     qwen_base_url: str = field(default=QWEN_BASE_URL)
     qwen_model_name: str = field(default=QWEN_MODEL_NAME)
