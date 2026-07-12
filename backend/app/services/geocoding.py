@@ -1,4 +1,5 @@
 import json
+import logging
 import math
 from dataclasses import dataclass
 from urllib.error import HTTPError, URLError
@@ -6,6 +7,8 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class GeocodingError(RuntimeError):
@@ -45,9 +48,18 @@ class GeocodingService:
 
     def geocode(self, address: str) -> GeoPoint | None:
         clean_address = " ".join(address.strip().split())
-        if not clean_address or not self.enabled:
+        if not clean_address:
+            logger.debug("geocoding_skipped reason=empty_address")
+            return None
+        if not self.enabled:
+            logger.debug("geocoding_skipped reason=disabled address=%r", clean_address)
             return None
 
+        logger.info(
+            "geocoding_started address=%r country_codes=%s",
+            clean_address,
+            self.country_codes or "none",
+        )
         params = {
             "q": clean_address,
             "format": "jsonv2",
@@ -65,20 +77,40 @@ class GeocodingService:
             with urlopen(request, timeout=self.timeout_seconds) as response:
                 payload = json.loads(response.read().decode("utf-8"))
         except (HTTPError, URLError, TimeoutError, json.JSONDecodeError, OSError) as exc:
+            logger.warning(
+                "geocoding_failed address=%r error_type=%s",
+                clean_address,
+                type(exc).__name__,
+            )
             raise GeocodingError("Geocoding request failed.") from exc
 
         if not isinstance(payload, list) or not payload:
+            logger.info("geocoding_no_result address=%r", clean_address)
             return None
         item = payload[0]
         try:
-            return GeoPoint(
+            point = GeoPoint(
                 latitude=float(item["lat"]),
                 longitude=float(item["lon"]),
                 display_name=str(item.get("display_name") or clean_address),
                 source="geocoded_address",
             )
         except (KeyError, TypeError, ValueError) as exc:
+            logger.warning(
+                "geocoding_invalid_response address=%r error_type=%s",
+                clean_address,
+                type(exc).__name__,
+            )
             raise GeocodingError("Geocoding response was invalid.") from exc
+
+        logger.info(
+            "geocoding_succeeded address=%r latitude=%.6f longitude=%.6f display_name=%r",
+            clean_address,
+            point.latitude,
+            point.longitude,
+            point.display_name,
+        )
+        return point
 
 
 def haversine_distance_km(first: GeoPoint, second: GeoPoint) -> float:
