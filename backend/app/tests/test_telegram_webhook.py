@@ -208,6 +208,8 @@ def test_webhook_sends_contextual_follow_up() -> None:
             987654321,
             "Your report has been received. I need one more detail before it can be matched.\n"
             "Where exactly is help needed?\n"
+            "You can type the address or share your Telegram location.\n"
+            "You can send /cancel to discard this unfinished report or /new to start over.\n"
             "If there is immediate danger, contact local emergency services now.",
         )
     ]

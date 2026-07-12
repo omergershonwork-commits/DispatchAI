@@ -23,7 +23,7 @@ SessionLocal = sessionmaker(
 
 
 def get_engine() -> Engine:
-    """Return the shared SQLAlchemy engine, creating it on first access."""
+    """Return the shared SQLAlchemy engine without opening a database connection."""
 
     global engine
     if engine is None:
@@ -33,6 +33,14 @@ def get_engine() -> Engine:
         )
         SessionLocal.configure(bind=engine)
     return engine
+
+
+def ensure_database_schema() -> None:
+    """Apply additive schema changes during application startup."""
+
+    from app.db.schema_migrations import ensure_runtime_schema
+
+    ensure_runtime_schema(get_engine())
 
 
 def get_db() -> Iterator[Session]:

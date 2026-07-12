@@ -1,10 +1,17 @@
 from fastapi import APIRouter, Depends, status
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.db.session import get_db
+from app.models.incident import Incident
+from app.models.volunteer import Volunteer, utc_now
 from app.schemas.telegram import TelegramWebhookUpdate
 from app.schemas.volunteer import VolunteerWebhookAccepted
+from app.services.dispatch_lifecycle import DispatchLifecycleError, DispatchLifecycleService
+from app.services.geocoding import GeocodingError, GeocodingService
+from app.services.incident_assigned_forces import sync_assigned_force
+from app.services.incident_auto_dispatch import IncidentAutoDispatchError, IncidentAutoDispatchService
 from app.services.telegram_bot_client import TelegramBotClient, TelegramBotClientError
 from app.services.volunteer_management import (
     VolunteerCommandResult,
@@ -14,25 +21,47 @@ from app.services.volunteer_management import (
 )
 
 VOLUNTEER_COMMAND_UNAVAILABLE_ERROR = "volunteer_command_unavailable"
-"""Safe response code returned when volunteer command processing fails."""
-
 VOLUNTEER_REPLY_UNAVAILABLE_ERROR = "volunteer_reply_unavailable"
-"""Safe response code returned when volunteer bot reply sending fails."""
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
-"""Router containing volunteer Telegram webhook endpoints."""
 
 
 def get_volunteer_management_service(db: Session = Depends(get_db)) -> VolunteerManagementService:
-    """Return the volunteer management service used by volunteer bot ingestion."""
-
     return VolunteerManagementService(db)
 
 
-def get_volunteer_telegram_bot_client() -> TelegramBotClient:
-    """Return the Telegram Bot API client used for volunteer bot replies."""
+def get_volunteer_geocoding_service() -> GeocodingService:
+    return GeocodingService()
 
+
+def get_volunteer_telegram_bot_client() -> TelegramBotClient:
     return TelegramBotClient(bot_token=settings.telegram_volunteer_bot_token)
+
+
+def get_incident_telegram_bot_client() -> TelegramBotClient | None:
+    if not settings.telegram_incident_bot_token.strip():
+        return None
+    return TelegramBotClient(bot_token=settings.telegram_incident_bot_token)
+
+
+def get_volunteer_auto_dispatch_service(
+    db: Session = Depends(get_db),
+) -> IncidentAutoDispatchService | None:
+    if not settings.telegram_volunteer_bot_token.strip():
+        return None
+    return IncidentAutoDispatchService(
+        db,
+        TelegramBotClient(bot_token=settings.telegram_volunteer_bot_token),
+    )
+
+
+def get_dispatch_lifecycle_service(
+    db: Session = Depends(get_db),
+) -> DispatchLifecycleService:
+    return DispatchLifecycleService(
+        db,
+        offer_timeout_seconds=settings.dispatch_offer_timeout_seconds,
+    )
 
 
 @router.post(
@@ -43,22 +72,70 @@ def get_volunteer_telegram_bot_client() -> TelegramBotClient:
 def receive_volunteer_telegram_webhook(
     update: TelegramWebhookUpdate,
     volunteer_service: VolunteerManagementService = Depends(get_volunteer_management_service),
+    lifecycle_service: DispatchLifecycleService = Depends(get_dispatch_lifecycle_service),
+    geocoding_service: GeocodingService = Depends(get_volunteer_geocoding_service),
     telegram_bot_client: TelegramBotClient = Depends(get_volunteer_telegram_bot_client),
+    incident_bot_client: TelegramBotClient | None = Depends(get_incident_telegram_bot_client),
+    auto_dispatch_service: IncidentAutoDispatchService | None = Depends(
+        get_volunteer_auto_dispatch_service
+    ),
 ) -> VolunteerWebhookAccepted:
-    """Accept a volunteer Telegram webhook update and process registration commands."""
-
     message = update.message
     command_result: VolunteerCommandResult | None = None
     command_error: str | None = None
     telegram_reply_sent = False
     telegram_reply_error: str | None = None
+    service_db = getattr(volunteer_service, "db", None)
 
-    if message and message.text and message.text.strip():
+    if message and message.location is not None:
+        if service_db is None:
+            command_result = VolunteerCommandResult(None, None, None, "Location could not be saved right now.")
+            command_error = VOLUNTEER_COMMAND_UNAVAILABLE_ERROR
+        else:
+            try:
+                volunteer = find_volunteer_by_chat(service_db, message.chat.id)
+                if volunteer is None:
+                    command_result = VolunteerCommandResult(
+                        None,
+                        None,
+                        None,
+                        "Register first with /register, then share your location.",
+                    )
+                else:
+                    volunteer.latitude = message.location.latitude
+                    volunteer.longitude = message.location.longitude
+                    volunteer.location_source = "telegram_gps"
+                    volunteer.location_updated_at = utc_now()
+                    volunteer.last_seen_at = utc_now()
+                    metadata = dict(volunteer.metadata_json or {})
+                    metadata["location_accuracy_m"] = message.location.horizontal_accuracy
+                    volunteer.metadata_json = metadata
+                    service_db.commit()
+                    command_result = VolunteerCommandResult(
+                        volunteer.id,
+                        volunteer.status,
+                        None,
+                        "Your current GPS location was updated. Dispatch distance limits will use this location.",
+                    )
+            except SQLAlchemyError:
+                service_db.rollback()
+                command_error = VOLUNTEER_COMMAND_UNAVAILABLE_ERROR
+                command_result = VolunteerCommandResult(None, None, None, "Location could not be saved right now.")
+
+    elif message and message.text and message.text.strip():
+        source_context = build_volunteer_source_context(update)
         try:
-            command_result = volunteer_service.process_message(
-                build_volunteer_source_context(update),
-            )
-        except (VolunteerManagementError, ValueError):
+            command_result = lifecycle_service.process_progress_message(source_context)
+            if command_result is None:
+                command_result = volunteer_service.process_message(source_context)
+            if service_db is not None:
+                sync_volunteer_location_from_profile(
+                    service_db,
+                    command_result,
+                    geocoding_service,
+                )
+                sync_volunteer_dashboard_state(service_db, command_result)
+        except (VolunteerManagementError, DispatchLifecycleError, ValueError):
             command_error = VOLUNTEER_COMMAND_UNAVAILABLE_ERROR
             command_result = VolunteerCommandResult(
                 volunteer_id=None,
@@ -67,11 +144,45 @@ def receive_volunteer_telegram_webhook(
                 reply_text="Volunteer command could not be processed right now. Please try again later.",
             )
 
+    if message and command_result is not None:
         try:
             telegram_bot_client.send_message(message.chat.id, command_result.reply_text)
             telegram_reply_sent = True
         except (TelegramBotClientError, ValueError):
             telegram_reply_error = VOLUNTEER_REPLY_UNAVAILABLE_ERROR
+
+        reporter_chat_id = command_result.reporter_chat_id
+        reporter_reply_text = command_result.reporter_reply_text
+        if command_result.dispatch_action == "done":
+            completion_update = lifecycle_service.reporter_update_for_result(command_result)
+            if completion_update is not None:
+                reporter_chat_id, reporter_reply_text = completion_update
+
+        if (
+            command_result.reporter_source == "telegram"
+            or command_result.dispatch_action == "done"
+        ) and reporter_chat_id is not None and reporter_reply_text and incident_bot_client is not None:
+            try:
+                incident_bot_client.send_message(reporter_chat_id, reporter_reply_text)
+            except (TelegramBotClientError, ValueError):
+                pass
+
+        if (
+            command_result.dispatch_action == "declined"
+            and command_result.incident_id is not None
+            and auto_dispatch_service is not None
+        ):
+            try:
+                dispatch_result = auto_dispatch_service.dispatch_ready_incident(command_result.incident_id)
+                if dispatch_result.reason == "no_available_volunteer" and incident_bot_client is not None:
+                    incident = auto_dispatch_service.db.get(Incident, command_result.incident_id)
+                    if incident is not None and incident.source == "telegram":
+                        incident_bot_client.send_message(
+                            incident.source_chat_id,
+                            "No registered volunteer has accepted yet. Your report remains saved. If there is immediate danger, contact local emergency services now.",
+                        )
+            except (IncidentAutoDispatchError, TelegramBotClientError, ValueError):
+                pass
 
     return VolunteerWebhookAccepted(
         update_id=update.update_id,
@@ -87,9 +198,71 @@ def receive_volunteer_telegram_webhook(
     )
 
 
-def build_volunteer_source_context(update: TelegramWebhookUpdate) -> VolunteerSourceContext:
-    """Translate a Telegram volunteer update into generic volunteer source metadata."""
+def find_volunteer_by_chat(db: Session, chat_id: int) -> Volunteer | None:
+    return (
+        db.query(Volunteer)
+        .filter(Volunteer.source == "telegram", Volunteer.source_chat_id == chat_id)
+        .first()
+    )
 
+
+def sync_volunteer_location_from_profile(
+    db: Session,
+    result: VolunteerCommandResult,
+    geocoding_service: GeocodingService,
+) -> None:
+    if result.volunteer_id is None:
+        return
+    volunteer = db.get(Volunteer, result.volunteer_id)
+    if volunteer is None or volunteer.latitude is not None:
+        return
+    metadata = volunteer.metadata_json or {}
+    address = str(metadata.get("location_text") or "").strip()
+    if not address:
+        return
+    try:
+        point = geocoding_service.geocode(address)
+    except GeocodingError:
+        return
+    if point is None:
+        return
+    volunteer.latitude = point.latitude
+    volunteer.longitude = point.longitude
+    volunteer.location_source = point.source
+    volunteer.location_updated_at = utc_now()
+    db.commit()
+
+
+def sync_volunteer_dashboard_state(db: Session, result: VolunteerCommandResult) -> None:
+    if result.volunteer_id is None:
+        return
+    try:
+        volunteer = db.get(Volunteer, result.volunteer_id)
+        if volunteer is None:
+            return
+
+        metadata = volunteer.metadata_json or {}
+        stored_phone = metadata.get("phone_number")
+        if stored_phone and not volunteer.phone_number:
+            volunteer.phone_number = str(stored_phone)
+
+        if result.dispatch_action in {"accepted", "declined", "done"} and result.incident_id is not None:
+            incident = db.get(Incident, result.incident_id)
+            sync_assigned_force(
+                incident,
+                volunteer,
+                status=result.dispatch_action,
+                dispatch_id=result.dispatch_id,
+            )
+            if result.dispatch_action == "done":
+                volunteer.trust_score = min(1.0, float(volunteer.trust_score or 0.5) + 0.02)
+
+        db.commit()
+    except SQLAlchemyError:
+        db.rollback()
+
+
+def build_volunteer_source_context(update: TelegramWebhookUpdate) -> VolunteerSourceContext:
     message = update.message
     if message is None or message.text is None:
         raise ValueError("Telegram text message is required to build volunteer source context.")

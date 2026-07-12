@@ -25,19 +25,18 @@ class IncidentPersistenceError(RuntimeError):
 
 @dataclass(frozen=True)
 class SourceIncidentContext:
-    """Source-agnostic metadata for an inbound incident report."""
-
     source: str
     source_update_id: int | None
     source_message_id: int | None
     source_chat_id: int
     raw_text: str
+    latitude: float | None = None
+    longitude: float | None = None
+    location_source: str | None = None
 
 
 @dataclass(frozen=True)
 class IncidentPersistenceResult:
-    """Outcome returned after creating or updating an incident."""
-
     incident_id: int
     status: str
     created: bool
@@ -54,8 +53,6 @@ class IncidentPersistenceService:
         self.pending_context_ttl = timedelta(minutes=pending_context_ttl_minutes)
 
     def build_extraction_text(self, source_context: SourceIncidentContext) -> str:
-        """Combine a follow-up message with recent pending incident context."""
-
         try:
             self._ensure_schema()
             pending_incident = self._find_recent_pending_incident(
@@ -66,25 +63,31 @@ class IncidentPersistenceService:
             self.db.rollback()
             raise IncidentPersistenceError("Incident conversation lookup failed.") from exc
 
+        latest_message = source_context.raw_text
+        if source_context.latitude is not None and source_context.longitude is not None:
+            latest_message = (
+                f"{latest_message}\nSender shared GPS coordinates: "
+                f"{source_context.latitude:.6f}, {source_context.longitude:.6f}."
+            )
         if pending_incident is None:
-            return source_context.raw_text
+            return latest_message
 
         prior_needs = ", ".join(pending_incident.needs or []) or "unknown"
         return (
             "This is a follow-up message for an existing pending incident.\n"
+            f"Existing title: {pending_incident.title or 'unknown'}\n"
             f"Existing summary: {pending_incident.summary}\n"
             f"Existing incident type: {pending_incident.incident_type or 'unknown'}\n"
             f"Existing location: {pending_incident.location_text or 'unknown'}\n"
             f"Existing urgency: {pending_incident.urgency}\n"
+            f"Existing affected-person details: {pending_incident.casualties_text or 'unknown'}\n"
             f"Existing needs: {prior_needs}\n"
             f"Previous conversation: {pending_incident.raw_text}\n"
-            f"Latest sender message: {source_context.raw_text}\n"
-            "Merge the latest message with the existing incident. Preserve known facts and only replace them when the latest message clearly corrects them."
+            f"Latest sender message: {latest_message}\n"
+            "Merge the latest message with the existing incident. Preserve known facts unless the latest message clearly corrects them."
         )
 
     def close_pending_incident(self, source: str, source_chat_id: int) -> bool:
-        """Close the latest pending incident for one source conversation."""
-
         try:
             self._ensure_schema()
             incident = self._find_pending_incident(source, source_chat_id)
@@ -105,8 +108,6 @@ class IncidentPersistenceService:
         source_context: SourceIncidentContext,
         extraction: IncidentExtractionResult | None,
     ) -> IncidentPersistenceResult | None:
-        """Create or update an incident from source metadata and extraction output."""
-
         if extraction is None or not extraction.is_incident:
             return None
         if not extraction.should_create_incident and not extraction.should_ask_follow_up:
@@ -176,10 +177,15 @@ class IncidentPersistenceService:
             source_message_id=source_context.source_message_id,
             source_chat_id=source_context.source_chat_id,
             raw_text=source_context.raw_text,
+            title=extraction.title,
             summary=extraction.summary,
             incident_type=extraction.incident_type,
             location_text=extraction.location_text,
+            latitude=source_context.latitude,
+            longitude=source_context.longitude,
+            location_source=source_context.location_source,
             urgency=extraction.urgency,
+            casualties_text=extraction.casualties_text,
             people_count=extraction.people_count,
             contact_name=extraction.contact_name,
             phone_number=extraction.phone_number,
@@ -189,6 +195,7 @@ class IncidentPersistenceService:
             metadata_json={
                 "missing_fields": list(extraction.missing_fields),
                 "follow_up_question": extraction.follow_up_question,
+                "assigned_forces": [],
             },
         )
 
@@ -201,19 +208,27 @@ class IncidentPersistenceService:
         incident.source_update_id = source_context.source_update_id
         incident.source_message_id = source_context.source_message_id
         incident.raw_text = f"{incident.raw_text}\n\n--- follow-up ---\n{source_context.raw_text}"
+        incident.title = self._choose_text(extraction.title, incident.title)
         incident.summary = self._choose_text(extraction.summary, incident.summary) or incident.summary
         incident.incident_type = self._choose_text(extraction.incident_type, incident.incident_type)
         incident.location_text = self._choose_text(extraction.location_text, incident.location_text)
+        if source_context.latitude is not None and source_context.longitude is not None:
+            incident.latitude = source_context.latitude
+            incident.longitude = source_context.longitude
+            incident.location_source = source_context.location_source
         incident.urgency = self._choose_urgency(extraction.urgency, incident.urgency)
+        incident.casualties_text = self._choose_text(extraction.casualties_text, incident.casualties_text)
         incident.people_count = extraction.people_count if extraction.people_count is not None else incident.people_count
         incident.contact_name = self._choose_text(extraction.contact_name, incident.contact_name)
         incident.phone_number = self._choose_text(extraction.phone_number, incident.phone_number)
         incident.needs = self._merge_needs(incident.needs, extraction.needs)
         incident.confidence = max(incident.confidence, extraction.confidence)
-        incident.metadata_json = {
-            "missing_fields": list(extraction.missing_fields),
-            "follow_up_question": extraction.follow_up_question,
-        }
+
+        metadata = dict(incident.metadata_json or {})
+        metadata["missing_fields"] = list(extraction.missing_fields)
+        metadata["follow_up_question"] = extraction.follow_up_question
+        metadata.setdefault("assigned_forces", [])
+        incident.metadata_json = metadata
         incident.status = READY_STATUS if self._has_required_fields(incident) else PENDING_STATUS
 
     def _has_required_fields(self, incident: Incident) -> bool:
