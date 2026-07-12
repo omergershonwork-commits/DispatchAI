@@ -1,3 +1,4 @@
+import logging
 from dataclasses import dataclass
 
 from sqlalchemy.exc import SQLAlchemyError
@@ -19,6 +20,8 @@ from app.services.geospatial_matching import GeospatialVolunteerMatchingService
 from app.services.incident_assigned_forces import sync_assigned_force
 from app.services.telegram_bot_client import TelegramBotClient, TelegramBotClientError
 from app.services.volunteer_management import VolunteerManagementError, VolunteerManagementService
+
+logger = logging.getLogger(__name__)
 
 
 class IncidentAutoDispatchError(RuntimeError):
@@ -44,6 +47,7 @@ class IncidentAutoDispatchService:
         self.volunteer_service = VolunteerManagementService(db)
 
     def dispatch_ready_incident(self, incident_id: int) -> IncidentAutoDispatchResult:
+        logger.info("automatic_dispatch_started incident_id=%s", incident_id)
         existing_open = (
             self.db.query(VolunteerDispatch)
             .filter(
@@ -54,6 +58,13 @@ class IncidentAutoDispatchService:
             .first()
         )
         if existing_open is not None:
+            logger.info(
+                "automatic_dispatch_skipped incident_id=%s reason=already_has_open_offer dispatch_id=%s volunteer_id=%s status=%s",
+                incident_id,
+                existing_open.id,
+                existing_open.volunteer_id,
+                existing_open.status,
+            )
             return IncidentAutoDispatchResult(
                 incident_id=incident_id,
                 volunteer_id=existing_open.volunteer_id,
@@ -68,12 +79,28 @@ class IncidentAutoDispatchService:
             .filter(VolunteerDispatch.incident_id == incident_id)
             .all()
         }
+        logger.info(
+            "automatic_dispatch_previous_offers incident_id=%s volunteer_ids=%s",
+            incident_id,
+            sorted(previously_offered_ids),
+        )
 
         try:
             batch = self.matching_service.recommend_for_incident(incident_id=incident_id, limit=20)
         except (DispatchMatchingError, ValueError) as exc:
+            logger.exception(
+                "automatic_dispatch_matching_failed incident_id=%s error_type=%s",
+                incident_id,
+                type(exc).__name__,
+            )
             raise IncidentAutoDispatchError("Volunteer matching failed.") from exc
 
+        logger.info(
+            "automatic_dispatch_recommendations incident_id=%s scenario=%s recommendation_count=%s",
+            incident_id,
+            batch.scenario,
+            len(batch.recommendations),
+        )
         recommendation = next(
             (
                 item
@@ -84,6 +111,12 @@ class IncidentAutoDispatchService:
         )
         if recommendation is None:
             reason = "location_unverified" if batch.scenario == "location_unverified" else "no_available_volunteer"
+            logger.warning(
+                "automatic_dispatch_not_sent incident_id=%s reason=%s recommendation_count=%s",
+                incident_id,
+                reason,
+                len(batch.recommendations),
+            )
             return IncidentAutoDispatchResult(
                 incident_id=incident_id,
                 volunteer_id=None,
@@ -94,12 +127,20 @@ class IncidentAutoDispatchService:
 
         incident = self.db.get(Incident, incident_id)
         if incident is None:
+            logger.error("automatic_dispatch_failed incident_id=%s reason=incident_missing_after_matching", incident_id)
             raise IncidentAutoDispatchError("Incident was not found after matching.")
 
-        message_text = self._build_dispatch_message(
-            incident,
-            recommendation.score_breakdown.get("distance_km"),
+        distance_km = recommendation.score_breakdown.get("distance_km")
+        logger.info(
+            "automatic_dispatch_candidate_selected incident_id=%s volunteer_id=%s recommendation_id=%s rank=%s total_score=%.6f distance_km=%s",
+            incident_id,
+            recommendation.volunteer_id,
+            recommendation.recommendation_id,
+            recommendation.rank,
+            recommendation.total_score,
+            distance_km,
         )
+        message_text = self._build_dispatch_message(incident, distance_km)
         try:
             dispatch = self.volunteer_service.create_dispatch_request(
                 volunteer_id=recommendation.volunteer_id,
@@ -114,7 +155,7 @@ class IncidentAutoDispatchService:
                 volunteer,
                 status="pending_response",
                 dispatch_id=dispatch.dispatch_id,
-                distance_km=recommendation.score_breakdown.get("distance_km"),
+                distance_km=distance_km,
             )
 
             recommendation_row = self.db.get(DispatchRecommendation, recommendation.recommendation_id)
@@ -123,8 +164,22 @@ class IncidentAutoDispatchService:
             self.db.commit()
         except (VolunteerManagementError, TelegramBotClientError, SQLAlchemyError, ValueError) as exc:
             self.db.rollback()
+            logger.exception(
+                "automatic_dispatch_notification_failed incident_id=%s volunteer_id=%s error_type=%s",
+                incident_id,
+                recommendation.volunteer_id,
+                type(exc).__name__,
+            )
             raise IncidentAutoDispatchError("Volunteer notification failed.") from exc
 
+        logger.info(
+            "automatic_dispatch_offer_sent incident_id=%s volunteer_id=%s dispatch_id=%s chat_id=%s distance_km=%s",
+            incident.id,
+            recommendation.volunteer_id,
+            dispatch.dispatch_id,
+            dispatch.source_chat_id,
+            distance_km,
+        )
         return IncidentAutoDispatchResult(
             incident_id=incident.id,
             volunteer_id=recommendation.volunteer_id,
