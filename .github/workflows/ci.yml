@@ -88,11 +88,11 @@ jobs:
         run: |
           set -euo pipefail
           if [[ -z "${QWEN_BASE_URL}" ]]; then
-            echo "::error::Repository secret QWEN_BASE_URL is required."
+            echo "::error::Add repository Actions secret QWEN_BASE_URL with the live Qwen server base URL."
             exit 1
           fi
           if [[ -z "${QWEN_MODEL_NAME}" ]]; then
-            echo "::error::Repository secret QWEN_MODEL_NAME is required."
+            echo "::error::Add repository Actions secret QWEN_MODEL_NAME with the served model identifier."
             exit 1
           fi
 
