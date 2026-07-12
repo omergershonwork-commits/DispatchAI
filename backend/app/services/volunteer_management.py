@@ -1,10 +1,13 @@
 from dataclasses import dataclass
 
+from sqlalchemy import desc
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.db.session import Base
 from app.models.volunteer import (
+    DISPATCH_STATUS_ACCEPTED,
+    DISPATCH_STATUS_CANCELLED,
     DISPATCH_STATUS_DONE,
     DISPATCH_STATUS_SENT,
     VOLUNTEER_STATUS_AVAILABLE,
@@ -16,6 +19,7 @@ from app.models.volunteer import (
 )
 
 REGISTER_COMMANDS = {"/start", "/register", "register", "join"}
+ACCEPT_COMMANDS = {"accept", "/accept", "confirm", "/confirm", "מאשר", "yes"}
 DONE_COMMANDS = {"done", "/done", "finished", "complete", "completed"}
 STOP_COMMANDS = {"/stop", "stop", "pause", "inactive"}
 STATUS_COMMANDS = {"/status", "status"}
@@ -99,6 +103,8 @@ class VolunteerManagementService:
             self._ensure_schema()
             if first_word in REGISTER_COMMANDS:
                 return self._start_or_resume_registration(source_context)
+            if first_word in ACCEPT_COMMANDS:
+                return self._accept_latest_dispatch(source_context)
             if first_word in DONE_COMMANDS:
                 return self._mark_latest_dispatch_done(source_context)
             if first_word in STOP_COMMANDS:
@@ -392,6 +398,63 @@ class VolunteerManagementService:
             "The dispatch has been marked complete. Thank you. You are available for new assignments.",
         )
 
+    def _accept_latest_dispatch(self, source_context: VolunteerSourceContext) -> VolunteerCommandResult:
+        volunteer = self._find_volunteer(source_context)
+        if volunteer is None:
+            return VolunteerCommandResult(
+                None,
+                None,
+                None,
+                "You are not registered yet. Send /register to join as a volunteer.",
+            )
+
+        self._apply_source_context(volunteer, source_context)
+        dispatch = self._find_latest_active_dispatch(volunteer.id)
+        if dispatch is None or dispatch.status == DISPATCH_STATUS_ACCEPTED:
+            return VolunteerCommandResult(
+                volunteer.id,
+                volunteer.status,
+                None,
+                "No pending dispatch to accept right now.",
+            )
+
+        dispatch.status = DISPATCH_STATUS_ACCEPTED
+        volunteer.status = VOLUNTEER_STATUS_BUSY
+        
+        # Cancel other pending dispatches for this incident (First-to-accept logic)
+        other_dispatches = self.db.query(VolunteerDispatch).filter(
+            VolunteerDispatch.incident_id == dispatch.incident_id,
+            VolunteerDispatch.status == DISPATCH_STATUS_SENT,
+            VolunteerDispatch.id != dispatch.id
+        ).all()
+        
+        for other_dispatch in other_dispatches:
+            other_dispatch.status = DISPATCH_STATUS_CANCELLED
+            # We don't change the other volunteers' status if they are just available.
+            
+            # Send Telegram notification to superseded volunteers
+            try:
+                from app.services.telegram_bot_client import TelegramBotClient
+                other_vol = self.db.get(Volunteer, other_dispatch.volunteer_id)
+                if other_vol and other_vol.source == "telegram":
+                    bot = TelegramBotClient()
+                    bot.send_message(
+                        chat_id=other_vol.source_chat_id,
+                        text="Another volunteer has taken this incident. Thank you. You are still available for other emergencies."
+                    )
+            except Exception as e:
+                print(f"Failed to notify superseded volunteer {other_dispatch.volunteer_id}: {e}")
+
+        self.db.commit()
+        self.db.refresh(volunteer)
+        self.db.refresh(dispatch)
+        return VolunteerCommandResult(
+            volunteer.id,
+            volunteer.status,
+            dispatch.id,
+            "You have accepted the dispatch. Please proceed to the incident safely. Send 'done' when completed.",
+        )
+
     def _mark_inactive(self, source_context: VolunteerSourceContext) -> VolunteerCommandResult:
         volunteer = self._find_volunteer(source_context)
         if volunteer is None:
@@ -480,7 +543,7 @@ class VolunteerManagementService:
             self.db.query(VolunteerDispatch)
             .filter(
                 VolunteerDispatch.volunteer_id == volunteer_id,
-                VolunteerDispatch.status == DISPATCH_STATUS_SENT,
+                VolunteerDispatch.status.in_([DISPATCH_STATUS_SENT, DISPATCH_STATUS_ACCEPTED]),
             )
             .order_by(VolunteerDispatch.sent_at.desc(), VolunteerDispatch.id.desc())
             .first()

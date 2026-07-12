@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from pydantic import BaseModel
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -14,6 +15,7 @@ from app.models.dispatch_recommendation import (
 )
 from app.models.incident import INCIDENT_STATUS_READY_FOR_DISPATCH, Incident
 from app.models.volunteer import VOLUNTEER_STATUS_AVAILABLE, Volunteer
+from app.services.qwen_client import QwenClient
 
 CONFIG_PATH = Path(__file__).resolve().parents[1] / "config" / "dispatch_scenarios.json"
 """Default dispatch scenario configuration path."""
@@ -226,6 +228,7 @@ class VolunteerMatchingService:
 
         self.db = db
         self.scenario_service = scenario_service or ScenarioSelectionService()
+        self.qwen_client = QwenClient()
 
     def recommend_for_incident(
         self,
@@ -251,7 +254,16 @@ class VolunteerMatchingService:
                 self._score_volunteer(incident, volunteer, selection.scenario)
                 for volunteer in candidates
             ]
-            ranked_scores = sorted(scores, key=lambda score: score.total_score, reverse=True)[:limit]
+            
+            # Step 1: Pre-filter using fast deterministic math logic
+            ranked_scores = sorted(scores, key=lambda score: score.total_score, reverse=True)[:max(limit, 5)]
+            
+            # Step 2: Use Qwen LLM to perform deep evaluation on top candidates
+            ranked_scores = self._evaluate_with_qwen(incident, ranked_scores)
+
+            # Re-sort by Qwen's overall score just in case, and enforce limit
+            ranked_scores = sorted(ranked_scores, key=lambda score: score.total_score, reverse=True)[:limit]
+
             self._delete_existing_recommendations(incident.id)
             recommendations = self._persist_recommendations(incident, selection, ranked_scores)
             self.db.commit()
@@ -265,6 +277,58 @@ class VolunteerMatchingService:
             scenario_confidence=selection.confidence,
             recommendations=recommendations,
         )
+
+    def _evaluate_with_qwen(self, incident: Incident, ranked_scores: list['VolunteerScore']) -> list['VolunteerScore']:
+        if not ranked_scores:
+            return []
+            
+        # Build prompt
+        vols_text = "\n".join([
+            f"ID: {s.volunteer_id} | Distance: {s.breakdown.get('location', 0)*100:.1f}% Match | Skills Match: {s.breakdown.get('skill_match', 0)*100:.1f}%"
+            for s in ranked_scores
+        ])
+        
+        prompt = f"""You are an emergency medical dispatcher AI. 
+Evaluate these top volunteers for the incident below.
+INCIDENT: {incident.summary} (Type: {incident.incident_type}, Needs: {incident.needs})
+
+VOLUNTEERS:
+{vols_text}
+
+For each volunteer, provide a JSON object with:
+1. "volunteer_id": The ID integer.
+2. "distance_score": 0-100 float (based strictly on the distance match provided).
+3. "skill_score": 0-100 float (based strictly on how well their skills match the incident needs).
+4. "overall_score": 0-100 float (weighted average, prioritizing distance and skills equally).
+5. "badge_text": A crisp 1-sentence explanation of why they are a good or bad fit (e.g. "Perfect fit: medic nearby.").
+
+Output MUST be a raw JSON array of objects. No markdown formatting, no code blocks, just raw JSON.
+"""
+        try:
+            response = self.qwen_client.generate(prompt)
+            # Find the JSON array in the response
+            text = response.text.strip()
+            if text.startswith('```json'):
+                text = text[7:]
+            if text.endswith('```'):
+                text = text[:-3]
+            
+            evaluations = json.loads(text.strip())
+            eval_map = {item['volunteer_id']: item for item in evaluations if 'volunteer_id' in item}
+            
+            for score in ranked_scores:
+                eval_data = eval_map.get(score.volunteer_id)
+                if eval_data:
+                    score.total_score = float(eval_data.get('overall_score', score.total_score)) / 100.0
+                    score.breakdown['qwen_distance_score'] = float(eval_data.get('distance_score', 0))
+                    score.breakdown['qwen_skill_score'] = float(eval_data.get('skill_score', 0))
+                    score.breakdown['qwen_overall_score'] = float(eval_data.get('overall_score', 0))
+                    score.breakdown['qwen_badge_text'] = eval_data.get('badge_text', '')
+        except Exception as e:
+            print(f"Qwen evaluation failed: {e}")
+            pass # Fallback to deterministic scores if Qwen fails
+            
+        return ranked_scores
 
     def _ensure_schema(self) -> None:
         """Create known ORM tables when running without migrations in local/dev mode."""

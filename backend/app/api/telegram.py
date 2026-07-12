@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, BackgroundTasks, Depends, status
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -12,8 +12,10 @@ from app.services.incident_persistence import (
     IncidentPersistenceService,
     SourceIncidentContext,
 )
-from app.services.qwen_client import QwenClientError
+from app.services.location_evaluator import LocationEvaluatorService
+from app.services.qwen_client import QwenClient, QwenClientError
 from app.services.telegram_bot_client import TelegramBotClient, TelegramBotClientError
+from app.services.auto_dispatch import process_auto_dispatch
 
 EXTRACTION_UNAVAILABLE_ERROR = "incident_extraction_unavailable"
 INCIDENT_PERSISTENCE_UNAVAILABLE_ERROR = "incident_persistence_unavailable"
@@ -36,6 +38,16 @@ def get_telegram_bot_client() -> TelegramBotClient:
     return TelegramBotClient(bot_token=settings.telegram_incident_bot_token)
 
 
+def get_location_evaluator_service() -> LocationEvaluatorService:
+    qwen_client = QwenClient(
+        base_url=settings.qwen_base_url,
+        model=settings.qwen_model_name,
+        timeout=settings.qwen_timeout_seconds,
+        request_headers_mode=settings.qwen_request_headers_mode,
+    )
+    return LocationEvaluatorService(qwen_client=qwen_client)
+
+
 @router.post(
     "/telegram",
     response_model=TelegramWebhookAccepted,
@@ -43,9 +55,11 @@ def get_telegram_bot_client() -> TelegramBotClient:
 )
 def receive_telegram_webhook(
     update: TelegramWebhookUpdate,
+    background_tasks: BackgroundTasks,
     extraction_service: IncidentExtractionService = Depends(get_incident_extraction_service),
     incident_persistence_service: IncidentPersistenceService = Depends(get_incident_persistence_service),
     telegram_bot_client: TelegramBotClient = Depends(get_telegram_bot_client),
+    location_evaluator: LocationEvaluatorService = Depends(get_location_evaluator_service),
 ) -> TelegramWebhookAccepted:
     """Accept an incident Telegram update, preserve recent context, persist it, and reply."""
 
@@ -79,6 +93,23 @@ def receive_telegram_webhook(
                 extraction_error = EXTRACTION_UNAVAILABLE_ERROR
 
             if extraction is not None:
+                if extraction.location_text and not extraction.latitude:
+                    try:
+                        eval_res = location_evaluator.evaluate_location(source_context.raw_text, extraction.location_text)
+                        if eval_res["needs_follow_up"]:
+                            extraction.should_ask_follow_up = True
+                            extraction.should_create_incident = False
+                            extraction.follow_up_question = eval_res["follow_up_question"]
+                            if "location_text" not in extraction.missing_fields:
+                                extraction.missing_fields.append("location_text")
+                        else:
+                            extraction.latitude = eval_res["latitude"]
+                            extraction.longitude = eval_res["longitude"]
+                            if "location_text" in extraction.missing_fields:
+                                extraction.missing_fields.remove("location_text")
+                    except Exception:
+                        pass
+
                 try:
                     persistence_result = incident_persistence_service.persist_incident(
                         source_context,
@@ -99,6 +130,9 @@ def receive_telegram_webhook(
             telegram_reply_sent = True
         except (TelegramBotClientError, ValueError):
             telegram_reply_error = TELEGRAM_REPLY_UNAVAILABLE_ERROR
+
+        if persistence_result and persistence_result.status == "ready_for_dispatch":
+            background_tasks.add_task(process_auto_dispatch, persistence_result.incident_id)
 
     return TelegramWebhookAccepted(
         update_id=update.update_id,

@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import DateTime, Float, Integer, JSON, String, Text
@@ -22,7 +22,7 @@ INCIDENT_STATUS_CLOSED = "closed"
 def utc_now() -> datetime:
     """Return the current UTC time for timestamp defaults."""
 
-    return datetime.now(UTC)
+    return datetime.now(timezone.utc)
 
 
 class Incident(Base):
@@ -40,6 +40,8 @@ class Incident(Base):
     summary: Mapped[str] = mapped_column(Text, nullable=False)
     incident_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     location_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     urgency: Mapped[str] = mapped_column(String(32), nullable=False, default="unknown")
     people_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     contact_name: Mapped[str | None] = mapped_column(Text, nullable=True)

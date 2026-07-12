@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
@@ -18,6 +18,9 @@ VOLUNTEER_STATUS_INACTIVE = "inactive"
 DISPATCH_STATUS_SENT = "sent"
 """Dispatch request was sent to a volunteer."""
 
+DISPATCH_STATUS_ACCEPTED = "accepted"
+"""Volunteer accepted the dispatch request and is en route."""
+
 DISPATCH_STATUS_DONE = "done"
 """Volunteer marked the dispatch as completed."""
 
@@ -28,7 +31,7 @@ DISPATCH_STATUS_CANCELLED = "cancelled"
 def utc_now() -> datetime:
     """Return the current UTC time for timestamp defaults."""
 
-    return datetime.now(UTC)
+    return datetime.now(timezone.utc)
 
 
 class Volunteer(Base):

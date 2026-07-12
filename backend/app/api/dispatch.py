@@ -54,3 +54,33 @@ def recommend_volunteers_for_incident(
             for recommendation in batch.recommendations
         ],
     )
+
+
+@router.get(
+    "/incidents/{incident_id}/recommendations",
+    response_model=list[DispatchRecommendationItem],
+)
+def get_recommendations_for_incident(
+    incident_id: int,
+    db: Session = Depends(get_db),
+) -> list[DispatchRecommendationItem]:
+    """Get the existing volunteer recommendations for an incident."""
+    from app.models.dispatch_recommendation import DispatchRecommendation, RECOMMENDATION_STATUS_RECOMMENDED
+    
+    recs = db.query(DispatchRecommendation).filter(
+        DispatchRecommendation.incident_id == incident_id,
+        DispatchRecommendation.status == RECOMMENDATION_STATUS_RECOMMENDED
+    ).order_by(DispatchRecommendation.rank.asc()).all()
+    
+    return [
+        DispatchRecommendationItem(
+            recommendation_id=rec.id,
+            incident_id=rec.incident_id,
+            volunteer_id=rec.volunteer_id,
+            scenario=rec.scenario,
+            rank=rec.rank,
+            total_score=rec.total_score,
+            score_breakdown=rec.score_breakdown,
+        )
+        for rec in recs
+    ]

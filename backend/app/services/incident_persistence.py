@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -16,7 +16,7 @@ from app.schemas.incident import IncidentExtractionResult
 PENDING_STATUS = INCIDENT_STATUS_PENDING_DETAILS
 READY_STATUS = INCIDENT_STATUS_READY_FOR_DISPATCH
 CLOSED_STATUS = INCIDENT_STATUS_CLOSED
-DEFAULT_PENDING_CONTEXT_TTL_MINUTES = 15
+DEFAULT_PENDING_CONTEXT_TTL_MINUTES = 30
 
 
 class IncidentPersistenceError(RuntimeError):
@@ -152,8 +152,8 @@ class IncidentPersistenceService:
             return None
         updated_at = incident.updated_at or incident.created_at
         if updated_at.tzinfo is None:
-            updated_at = updated_at.replace(tzinfo=UTC)
-        if updated_at < datetime.now(UTC) - self.pending_context_ttl:
+            updated_at = updated_at.replace(tzinfo=timezone.utc)
+        if updated_at < datetime.now(timezone.utc) - self.pending_context_ttl:
             return None
         return incident
 
@@ -179,6 +179,8 @@ class IncidentPersistenceService:
             summary=extraction.summary,
             incident_type=extraction.incident_type,
             location_text=extraction.location_text,
+            latitude=extraction.latitude,
+            longitude=extraction.longitude,
             urgency=extraction.urgency,
             people_count=extraction.people_count,
             contact_name=extraction.contact_name,
@@ -204,6 +206,8 @@ class IncidentPersistenceService:
         incident.summary = self._choose_text(extraction.summary, incident.summary) or incident.summary
         incident.incident_type = self._choose_text(extraction.incident_type, incident.incident_type)
         incident.location_text = self._choose_text(extraction.location_text, incident.location_text)
+        incident.latitude = extraction.latitude if extraction.latitude is not None else incident.latitude
+        incident.longitude = extraction.longitude if extraction.longitude is not None else incident.longitude
         incident.urgency = self._choose_urgency(extraction.urgency, incident.urgency)
         incident.people_count = extraction.people_count if extraction.people_count is not None else incident.people_count
         incident.contact_name = self._choose_text(extraction.contact_name, incident.contact_name)
@@ -217,7 +221,7 @@ class IncidentPersistenceService:
         incident.status = READY_STATUS if self._has_required_fields(incident) else PENDING_STATUS
 
     def _has_required_fields(self, incident: Incident) -> bool:
-        return bool(incident.summary and incident.incident_type and incident.location_text and incident.needs)
+        return bool(incident.summary and incident.incident_type and incident.location_text)
 
     def _choose_text(self, new_value: str | None, current_value: str | None) -> str | None:
         if new_value and new_value.strip():

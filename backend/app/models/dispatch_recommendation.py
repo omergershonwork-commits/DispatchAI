@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, JSON, String
@@ -19,7 +19,7 @@ RECOMMENDATION_STATUS_SKIPPED = "skipped"
 def utc_now() -> datetime:
     """Return the current UTC time for timestamp defaults."""
 
-    return datetime.now(UTC)
+    return datetime.now(timezone.utc)
 
 
 class DispatchRecommendation(Base):

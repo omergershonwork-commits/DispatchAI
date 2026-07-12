@@ -1,5 +1,7 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.dashboard import router as dashboard_router
 from app.api.dispatch import router as dispatch_router
 from app.api.health import router as health_router
 from app.api.telegram import router as telegram_router
@@ -11,10 +13,21 @@ def create_app() -> FastAPI:
     """Create and configure the FastAPI backend application."""
 
     app = FastAPI(title=settings.app_name)
+
+    # Configure CORS for the React dashboard
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],  # In production, restrict to frontend URL
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
     app.include_router(health_router)
     app.include_router(telegram_router)
     app.include_router(volunteer_telegram_router)
     app.include_router(dispatch_router)
+    app.include_router(dashboard_router)
     return app
 
 

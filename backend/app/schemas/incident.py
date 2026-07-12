@@ -25,10 +25,13 @@ INCIDENT_ONLY_REPLY = (
 class IncidentExtractionResult(BaseModel):
     """Validated incident details extracted from a free-text Telegram message."""
 
+    reasoning: str | None = Field(default=None, description="Step-by-step analysis of the emergency.")
     is_incident: bool = Field(description="Whether the message appears to describe an incident requiring help.")
     summary: str = Field(description="Short human-readable incident summary.")
     incident_type: str | None = Field(default=None, description="Incident category inferred from the message, when clear.")
     location_text: str | None = Field(default=None, description="Free-text location mentioned by the sender, when available.")
+    latitude: float | None = Field(default=None, description="Evaluated latitude from location_text.")
+    longitude: float | None = Field(default=None, description="Evaluated longitude from location_text.")
     urgency: IncidentUrgency = Field(default="unknown", description="Estimated urgency level.")
     people_count: int | None = Field(default=None, ge=0, description="Number of affected people, when stated or clearly inferred.")
     contact_name: str | None = Field(default=None, description="Name of the person to contact, when provided.")
