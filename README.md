@@ -357,16 +357,6 @@ For an internet-facing environment:
 - use immutable image tags and a rollback-capable deployment process
 - maintain separate development, staging, and production environments
 
-## Current Limitations
-
-- AI extraction can be incomplete or incorrect
-- geocoded addresses can be approximate
-- GPS positions can become stale
-- Haversine distance is not road travel time
-- the AMD notebook and geocoding service are external dependencies
-- the current dispatch flow sends one offer at a time
-- production authentication and authorization are not yet complete
-- official emergency-service integrations are not included
 
 ## Roadmap
 
