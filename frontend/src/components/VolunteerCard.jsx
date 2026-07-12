@@ -12,8 +12,8 @@ const getRoleIcon = (role) => {
 };
 
 const VolunteerCard = ({ volunteer, onClick, isSelected }) => {
-  const isAvailable = !volunteer.assignedTo;
-  const statusClass = volunteer.assignedTo ? 'dispatched' : 'available';
+  const isAvailable = !volunteer.assignedIncidentId;
+  const statusClass = volunteer.assignedIncidentId ? 'dispatched' : 'available';
 
   return (
     <div 
@@ -25,7 +25,7 @@ const VolunteerCard = ({ volunteer, onClick, isSelected }) => {
           {getRoleIcon(volunteer.role)}
         </div>
         <div className="volunteer-info">
-          <span className="volunteer-name">{volunteer.name}</span>
+          <span className="volunteer-name">{volunteer.display_name || volunteer.first_name || 'Volunteer'}</span>
           <span className="volunteer-role">{volunteer.role}</span>
         </div>
         <div className="volunteer-distance">
@@ -33,10 +33,17 @@ const VolunteerCard = ({ volunteer, onClick, isSelected }) => {
         </div>
       </div>
       
-      {!isAvailable && volunteer.assignedTo && (
+      {!isAvailable && volunteer.assignedIncidentId && volunteer.dispatchStatus !== 'accepted' && (
         <div className="volunteer-footer">
           <span className="status-dot pulsing"></span>
-          <span>Dispatched to Incident #{volunteer.assignedTo}</span>
+          <span>Dispatched to Incident #{volunteer.assignedIncidentId}</span>
+        </div>
+      )}
+
+      {!isAvailable && volunteer.assignedIncidentId && volunteer.dispatchStatus === 'accepted' && (
+        <div className="volunteer-footer accepted" style={{ color: 'var(--tactical-green)' }}>
+          <span className="status-dot green pulsing" style={{ boxShadow: '0 0 8px var(--tactical-green)' }}></span>
+          <span>Confirmed & En Route to #{volunteer.assignedIncidentId}</span>
         </div>
       )}
       

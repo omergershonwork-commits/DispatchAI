@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Activity, Battery, CheckCircle2, MapPin, Clock, ShieldAlert, Award, User, Stethoscope, Car, Navigation } from 'lucide-react';
 import './VolunteerDossier.css';
 
@@ -34,6 +34,13 @@ const VolunteerDossier = ({ volunteer, incident, onIncidentClick }) => {
     statusIcon = <CheckCircle2 size={16} color={statusColor} />;
   }
 
+  const CensoredPhone = ({ phone }) => {
+    const [revealed, setRevealed] = useState(false);
+    if (!phone) return <span className="intel-value" style={{ color: 'var(--text-secondary)' }}>N/A</span>;
+    if (revealed) return <span className="intel-value text-blue" style={{ cursor: 'pointer', letterSpacing: '1px' }} onClick={() => setRevealed(false)}>{phone}</span>;
+    return <span className="intel-value text-blue" style={{ cursor: 'pointer', letterSpacing: '2px', filter: 'blur(4px)', userSelect: 'none' }} onClick={() => setRevealed(true)}>05X-XXXXXXX</span>;
+  };
+
   return (
     <div className="volunteer-dossier-container">
       <div className="dossier-content">
@@ -44,7 +51,7 @@ const VolunteerDossier = ({ volunteer, incident, onIncidentClick }) => {
             <User size={32} color="var(--tactical-blue)" />
           </div>
           <div className="profile-info">
-            <div className="profile-name">{volunteer.name}</div>
+            <div className="profile-name">{volunteer.display_name || volunteer.first_name || 'Volunteer'}</div>
             <div className="profile-role">{volunteer.role}</div>
             <div className="profile-status" style={{ color: statusColor }}>
               {statusIcon}
@@ -55,15 +62,19 @@ const VolunteerDossier = ({ volunteer, incident, onIncidentClick }) => {
 
         {/* Biodata */}
         <div className="dossier-section">
-          <div className="section-title">Operator Biodata</div>
+          <div className="section-title">Operator Intel</div>
           <div className="intel-grid bio-grid">
             <div className="intel-box">
-              <span className="intel-label">Gender</span>
-              <span className="intel-value">{volunteer.gender}</span>
+              <span className="intel-label">Phone (Tap to reveal)</span>
+              <CensoredPhone phone={volunteer.phone} />
             </div>
             <div className="intel-box">
-              <span className="intel-label">Height / Weight</span>
-              <span className="intel-value">{volunteer.height} / {volunteer.weight}</span>
+              <span className="intel-label">Telegram Handle</span>
+              <span className="intel-value">{volunteer.username ? `@${volunteer.username}` : 'N/A'}</span>
+            </div>
+            <div className="intel-box" style={{ gridColumn: 'span 2' }}>
+              <span className="intel-label">Last Active</span>
+              <span className="intel-value">{volunteer.lastSeen}</span>
             </div>
           </div>
         </div>

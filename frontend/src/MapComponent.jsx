@@ -48,7 +48,7 @@ const MapCameraHandler = ({ selectedVolunteer, selectedIncident, leftTab, volunt
         const bounds = L.latLngBounds([selectedVolunteer.position, selectedIncident.position]);
         map.flyToBounds(bounds, { padding: [50, 50], duration: 1.5 });
       } else {
-        const assignedVols = volunteers.filter(v => v.assignedTo === selectedIncident.id);
+        const assignedVols = volunteers.filter(v => v.assignedIncidentId === selectedIncident.id);
         if (assignedVols.length > 0) {
           const bounds = L.latLngBounds([selectedIncident.position, ...assignedVols.map(v => v.position)]);
           map.flyToBounds(bounds, { padding: [80, 80], duration: 1.5 });
@@ -57,8 +57,8 @@ const MapCameraHandler = ({ selectedVolunteer, selectedIncident, leftTab, volunt
         }
       }
     } else if (leftTab === 'forces' && selectedVolunteer) {
-      if (selectedVolunteer.assignedTo && incidents) {
-        const assignedIncident = incidents.find(i => i.id === selectedVolunteer.assignedTo);
+      if (selectedVolunteer.assignedIncidentId && incidents) {
+        const assignedIncident = incidents.find(i => i.id === selectedVolunteer.assignedIncidentId);
         if (assignedIncident) {
           const bounds = L.latLngBounds([selectedVolunteer.position, assignedIncident.position]);
           map.flyToBounds(bounds, { padding: [50, 50], duration: 1.5 });
@@ -72,7 +72,7 @@ const MapCameraHandler = ({ selectedVolunteer, selectedIncident, leftTab, volunt
 };
 
 // Create custom Emergency Icon with dynamic sizing
-const createEmergencyIcon = (severity, IconComponent, zoom, isSelected) => {
+const createEmergencyIcon = (urgency, IconComponent, zoom, isSelected) => {
   let size = 32;
   let iconSize = 18;
   
@@ -82,11 +82,11 @@ const createEmergencyIcon = (severity, IconComponent, zoom, isSelected) => {
 
   const markerHtml = iconSize > 0 
     ? renderToString(
-        <div className={`emergency-marker ${severity} ${isSelected ? 'selected' : ''}`} style={{ width: `${size}px`, height: `${size}px` }}>
+        <div className={`emergency-marker ${urgency} ${isSelected ? 'selected' : ''}`} style={{ width: `${size}px`, height: `${size}px` }}>
           <IconComponent size={iconSize} strokeWidth={1.5} color="white" />
         </div>
       )
-    : `<div class="emergency-marker ${severity} ${isSelected ? 'selected' : ''}" style="width: ${size}px; height: ${size}px;"></div>`;
+    : `<div class="emergency-marker ${urgency} ${isSelected ? 'selected' : ''}" style="width: ${size}px; height: ${size}px;"></div>`;
 
   return L.divIcon({
     className: 'custom-icon-wrapper',
@@ -134,7 +134,7 @@ const MapComponent = ({ isLeftOpen, isRightOpen, incidents = [], volunteers = []
         <Marker 
           key={`inc-${incident.id}`}
           position={incident.position} 
-          icon={createEmergencyIcon(incident.severity, incident.type === 'fire' ? AlertTriangle : incident.type === 'medical' ? Activity : ShieldAlert, zoomLevel, selectedIncident?.id === incident.id)}
+          icon={createEmergencyIcon(incident.urgency, incident.type === 'fire' ? AlertTriangle : incident.type === 'medical' ? Activity : ShieldAlert, zoomLevel, selectedIncident?.id === incident.id)}
           eventHandlers={{
             click: () => {
               if (onIncidentClick) onIncidentClick(incident);
@@ -144,11 +144,13 @@ const MapComponent = ({ isLeftOpen, isRightOpen, incidents = [], volunteers = []
       ))}
 
       {/* Render Volunteers */}
-      {volunteers.map(vol => (
+      {volunteers.map(vol => {
+        const displayStatus = vol.assignedIncidentId ? 'dispatched' : vol.status;
+        return (
         <Marker 
           key={vol.id} 
           position={vol.position} 
-          icon={createVolunteerIcon(vol.status, zoomLevel, selectedVolunteer?.id === vol.id)}
+          icon={createVolunteerIcon(displayStatus, zoomLevel, selectedVolunteer?.id === vol.id)}
           eventHandlers={{
             click: () => {
               if (onVolunteerClick) onVolunteerClick(vol);
@@ -161,34 +163,39 @@ const MapComponent = ({ isLeftOpen, isRightOpen, incidents = [], volunteers = []
                 width: '6px', 
                 height: '6px', 
                 borderRadius: '50%', 
-                backgroundColor: vol.status === 'available' ? '#10b981' : '#f59e0b',
-                boxShadow: `0 0 4px ${vol.status === 'available' ? '#10b981' : '#f59e0b'}`
+                backgroundColor: displayStatus === 'available' ? '#10b981' : displayStatus === 'dispatched' ? '#3b82f6' : '#f59e0b',
+                boxShadow: `0 0 4px ${displayStatus === 'available' ? '#10b981' : displayStatus === 'dispatched' ? '#3b82f6' : '#f59e0b'}`
               }} />
               <span style={{ fontWeight: 500, fontSize: '0.8rem', letterSpacing: '0.5px' }}>
-                {vol.name}
+                {vol.display_name || vol.first_name || 'Volunteer'}
               </span>
             </div>
           </Tooltip>
         </Marker>
-      ))}
+      )})}
 
       {/* Render Animated Route Lines for dispatched volunteers */}
-      {volunteers.filter(v => (v.status === 'dispatched' || v.status === 'en_route') && v.assignedTo).map(vol => {
-        const targetIncident = incidents.find(i => i.id === vol.assignedTo);
+      {volunteers.filter(v => v.assignedIncidentId).map(vol => {
+        const targetIncident = incidents.find(i => i.id === vol.assignedIncidentId);
         if (!targetIncident) return null;
+        
+        const isAccepted = vol.dispatchStatus === 'accepted';
+        const lineColor = isAccepted ? "var(--tactical-green)" : "var(--tactical-blue)";
+        const lineClass = isAccepted ? "animated-route-line-accepted" : "animated-route-line";
+        
         return (
           <React.Fragment key={`route-${vol.id}`}>
             <Polyline
               positions={[vol.position, targetIncident.position]}
-              color="var(--tactical-blue)"
-              weight={2}
+              color={lineColor}
+              weight={isAccepted ? 3 : 2}
               className="route-line-bg"
             />
             <Polyline
               positions={[vol.position, targetIncident.position]}
-              color="var(--tactical-blue)"
-              weight={2}
-              className="animated-route-line"
+              color={lineColor}
+              weight={isAccepted ? 4 : 2}
+              className={lineClass}
             />
           </React.Fragment>
         );

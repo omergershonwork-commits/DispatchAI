@@ -107,7 +107,8 @@
 }
 
 /* Sidebars Base Style */
-.sidebar-left, .sidebar-right {
+.sidebar-left,
+.sidebar-right {
   width: 380px;
   background-color: rgba(18, 19, 22, 0.85);
   backdrop-filter: blur(12px);
@@ -126,7 +127,8 @@
   border-left: 1px solid var(--border-color);
 }
 
-.sidebar-left.collapsed, .sidebar-right.collapsed {
+.sidebar-left.collapsed,
+.sidebar-right.collapsed {
   width: 0;
   border-color: transparent;
 }
@@ -181,7 +183,8 @@
   padding: 8px 12px;
   cursor: pointer;
   z-index: 400;
-  border-radius: 0; /* Sharp */
+  border-radius: 0;
+  /* Sharp */
   font-family: 'Outfit', sans-serif;
   font-size: 0.75rem;
   text-transform: uppercase;
@@ -193,8 +196,13 @@
   background-color: var(--bg-panel);
 }
 
-.open-sidebar-btn.left { left: 20px; }
-.open-sidebar-btn.right { right: 20px; }
+.open-sidebar-btn.left {
+  left: 20px;
+}
+
+.open-sidebar-btn.right {
+  right: 20px;
+}
 
 /* Center Map Container */
 .map-container {
@@ -236,8 +244,17 @@
 
 /* Radar Sweep Animation for Emergencies */
 @keyframes radarSweep {
-  0% { transform: scale(0.5); opacity: 1; border-width: 2px; }
-  100% { transform: scale(2); opacity: 0; border-width: 1px; }
+  0% {
+    transform: scale(0.5);
+    opacity: 1;
+    border-width: 2px;
+  }
+
+  100% {
+    transform: scale(2);
+    opacity: 0;
+    border-width: 1px;
+  }
 }
 
 .emergency-marker {
@@ -249,22 +266,38 @@
   background-color: var(--bg-fallback);
   width: 32px;
   height: 32px;
-  border-radius: 50%; /* Circle shape */
+  border-radius: 50%;
+  /* Circle shape */
 }
 
 .emergency-marker::after {
   content: '';
   position: absolute;
-  top: -2px; left: -2px; right: -2px; bottom: -2px;
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  bottom: -2px;
   border: 2px solid var(--bg-fallback);
-  border-radius: 50%; /* Circle shape */
+  border-radius: 50%;
+  /* Circle shape */
   animation: radarSweep 1.5s ease-out infinite;
 }
 
-.emergency-marker.critical { --bg-fallback: var(--tactical-red); }
-.emergency-marker.high { --bg-fallback: var(--tactical-orange); }
-.emergency-marker.medium { --bg-fallback: var(--tactical-yellow); }
-.emergency-marker.low { --bg-fallback: var(--tactical-blue); }
+.emergency-marker.critical {
+  --bg-fallback: var(--tactical-red);
+}
+
+.emergency-marker.high {
+  --bg-fallback: var(--tactical-orange);
+}
+
+.emergency-marker.medium {
+  --bg-fallback: var(--tactical-yellow);
+}
+
+.emergency-marker.low {
+  --bg-fallback: var(--tactical-blue);
+}
 
 .emergency-marker.selected {
   z-index: 1000 !important;
@@ -273,7 +306,8 @@
 }
 
 .emergency-marker.selected::after {
-  animation: radarSweep 0.8s ease-out infinite; /* faster pulse when selected */
+  animation: radarSweep 0.8s ease-out infinite;
+  /* faster pulse when selected */
   border-width: 3px;
   border-color: #ffffff;
 }
@@ -284,7 +318,8 @@
   border: 1px solid var(--bg-dark);
   width: 12px;
   height: 12px;
-  border-radius: 50%; /* Circle shape */
+  border-radius: 50%;
+  /* Circle shape */
   transition: all 0.3s;
 }
 
@@ -308,14 +343,24 @@
 }
 
 .animated-route-line {
-  stroke-dasharray: 10 20; /* smooth dashed flow */
+  stroke-dasharray: 10 20;
+  /* smooth dashed flow */
   animation: flowLine 1.5s linear infinite;
   opacity: 0.9;
   filter: drop-shadow(0 0 5px var(--tactical-blue));
 }
 
 @keyframes flowLine {
-  to { stroke-dashoffset: -30; }
+  to {
+    stroke-dashoffset: -30;
+  }
+}
+
+.animated-route-line-accepted {
+  stroke-dasharray: 20 15;
+  animation: flowLine 0.8s linear infinite;
+  opacity: 1;
+  filter: drop-shadow(0 0 8px var(--tactical-green));
 }
 
 /* --- Command & Control Override Mode --- */
@@ -327,7 +372,8 @@
   background: none;
   border: none;
   color: var(--text-secondary);
-  opacity: 0.1; /* Very hidden */
+  opacity: 0.1;
+  /* Very hidden */
   cursor: pointer;
   padding: 4px;
   transition: all 0.2s;
@@ -370,9 +416,20 @@
 }
 
 @keyframes pulse-red {
-  0% { opacity: 0.7; box-shadow: 0 0 0 rgba(239, 68, 68, 0); }
-  50% { opacity: 1; box-shadow: 0 0 10px rgba(239, 68, 68, 0.4); }
-  100% { opacity: 0.7; box-shadow: 0 0 0 rgba(239, 68, 68, 0); }
+  0% {
+    opacity: 0.7;
+    box-shadow: 0 0 0 rgba(239, 68, 68, 0);
+  }
+
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
+  }
+
+  100% {
+    opacity: 0.7;
+    box-shadow: 0 0 0 rgba(239, 68, 68, 0);
+  }
 }
 
 .dispatching .leaflet-container,

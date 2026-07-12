@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - OG/API
+  push:
+    branches:
+      - OG/API
+      - OG_Worker
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-test-and-compose:
+    name: Backend Test and Docker Compose
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
+
+      - name: Run backend tests
+        working-directory: backend
+        run: pytest -q
+
+      - name: Build and start backend stack
+        run: docker compose up --build -d db backend
+
+      - name: Verify backend services
+        run: |
+          set -euo pipefail
+
+          for attempt in {1..60}; do
+            if curl -fsS http://localhost:8000/health \
+              && curl -fsS http://localhost:8000/ready; then
+              exit 0
+            fi
+
+            echo "Waiting for backend services to become ready... attempt ${attempt}/60"
+            sleep 2
+          done
+
+          docker compose ps
+          docker compose logs db backend
+          exit 1
+
+      - name: Stop Docker Compose stack
+        if: always()
+        run: docker compose down --remove-orphans

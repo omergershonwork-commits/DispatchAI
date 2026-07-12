@@ -11,18 +11,31 @@ const getIcon = (type) => {
 };
 
 const IncidentCard = ({ incident, onClick, isSelected }) => {
+  const parseSynthesis = (text) => {
+    if (!text) return 'Pending Analysis...';
+    const analysisMatch = text.match(/• ANALYSIS:\n(.*?)(?=\n\n• ACTION TAKEN:|$)/s);
+    return analysisMatch ? analysisMatch[1].trim() : text;
+  };
+  
+  const analysisText = parseSynthesis(incident.aiSynthesis);
+
   return (
     <div 
-      className={`incident-card ${incident.severity} ${isSelected ? 'selected' : ''}`}
+      className={`incident-card ${incident.urgency} ${isSelected ? 'selected' : ''}`}
       onClick={() => onClick(incident)}
     >
       <div className="card-header">
-        <div className="card-icon">{getIcon(incident.type)}</div>
-        <div className="card-time">{incident.time}</div>
-        <div className={`severity-badge ${incident.severity}`}>{incident.severity.toUpperCase()}</div>
+        <div className="title-group">
+          <div className="card-icon">{getIcon(incident.type)}</div>
+          <h3>Incident #{incident.id}</h3>
+        </div>
+        <div className="header-right">
+          <div className="card-time">{incident.time}</div>
+          <div className={`severity-badge ${incident.urgency}`}>{incident.urgency.toUpperCase()}</div>
+        </div>
       </div>
       <div className="card-body">
-        <p className="message-text">"{incident.message}"</p>
+        <p className="message-text">{analysisText}</p>
       </div>
       <div className="card-footer">
         <MapPin size={14} strokeWidth={1.5} />

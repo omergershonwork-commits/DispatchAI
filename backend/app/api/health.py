@@ -1,0 +1,41 @@
+from fastapi import APIRouter, status
+from fastapi.responses import JSONResponse
+
+from app.db.session import check_database_connection
+
+router = APIRouter(tags=["health"])
+"""Router exposing backend health and readiness endpoints."""
+
+
+@router.get("/health")
+def health() -> dict[str, str]:
+    """Return a lightweight liveness response when the backend process is running."""
+
+    return {
+        "status": "ok",
+        "service": "backend",
+    }
+
+
+@router.get("/ready")
+def ready() -> JSONResponse:
+    """Return backend readiness based on database connectivity."""
+
+    if not check_database_connection():
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={
+                "status": "not_ready",
+                "service": "backend",
+                "database": "unavailable",
+            },
+        )
+
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content={
+            "status": "ready",
+            "service": "backend",
+            "database": "ok",
+        },
+    )

@@ -26,9 +26,7 @@ function App() {
     } else {
       setLeftTab(tab);
       setIsLeftOpen(true);
-      // Switch right panel automatically if we have a selection in that tab
-      if (tab === 'incidents' && selectedIncident) setIsRightOpen(true);
-      if (tab === 'forces' && selectedVolunteer) setIsRightOpen(true);
+      // Do not open right panel automatically; wait for an explicit item click
     }
   };
 
@@ -103,7 +101,7 @@ function App() {
       });
     }, 3000);
 
-    // Polling for volunteers (30 seconds)
+    // Polling for volunteers (3 seconds)
     const volInterval = setInterval(async () => {
       const volData = await fetchVolunteers();
       setVolunteers(volData);
@@ -112,7 +110,7 @@ function App() {
         if (!prevSelected) return null;
         return volData.find(vol => vol.id === prevSelected.id) || prevSelected;
       });
-    }, 30000);
+    }, 3000);
 
     return () => {
       clearInterval(incInterval);
@@ -124,7 +122,7 @@ function App() {
     // Optimistic UI update
     setVolunteers(prev => prev.map(v => 
       v.id === volId 
-        ? { ...v, status: 'dispatched', assignedTo: incId } 
+        ? { ...v, status: 'dispatched', assignedIncidentId: incId } 
         : v
     ));
     await dispatchVolunteer(volId, incId);

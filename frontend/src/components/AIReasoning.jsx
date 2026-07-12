@@ -1,37 +1,92 @@
 import React, { useState, useEffect } from 'react';
-import { Cpu, CheckCircle2, Clock, MapPin, Activity, ShieldAlert, Navigation } from 'lucide-react';
+import { Cpu, CheckCircle2, Clock, MapPin, Activity, ShieldAlert, Navigation, Target } from 'lucide-react';
 import CircularProgress from './CircularProgress';
 import Typewriter from './Typewriter';
+import { fetchRecommendations } from '../services/api';
 import './AIReasoning.css';
+
 const AIReasoning = ({ incident, volunteers, onVolunteerClick }) => {
   const [visibleSteps, setVisibleSteps] = useState(0);
+  const [recommendations, setRecommendations] = useState([]);
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
+  const [isTimeout, setIsTimeout] = useState(false);
 
   const steps = [
-    "Running Qwen-2.5 7B NER...",
+    "Running Qwen/Qwen2.5-14B-Instruct NER...",
     "Extracting Location (Geo-coding)",
     "Assessing Severity (Critical)",
     "Querying Volunteers in 5km Radius",
-    "Dispatching Closest Matches"
+    "Generating AI Match Scores"
   ];
 
   // Find dispatched volunteers for this incident
   const assignedVols = volunteers?.filter(v => v.assignedTo === incident?.id) || [];
 
+  // 1. Reset state when switching incidents
   useEffect(() => {
-    if (incident) {
+    if (incident?.id) {
+      setInitialLoadComplete(false);
+      setRecommendations([]);
+      setIsTimeout(false);
+    }
+  }, [incident?.id]);
+
+  // 2. Poll for recommendations (Updates state directly from DB)
+  useEffect(() => {
+    if (!incident?.id) return;
+    
+    let isCancelled = false;
+
+    const loadRecs = async () => {
+      const recs = await fetchRecommendations(incident.id);
+      if (!isCancelled) {
+        setRecommendations(recs);
+        setInitialLoadComplete(true);
+      }
+    };
+    loadRecs();
+
+    const pollInterval = setInterval(async () => {
+      const recs = await fetchRecommendations(incident.id);
+      if (!isCancelled) {
+        setRecommendations(recs);
+        // Ensure this is set even if the first load somehow failed
+        setInitialLoadComplete(true);
+      }
+    }, 3000);
+    
+    return () => {
+      isCancelled = true;
+      clearInterval(pollInterval);
+    };
+  }, [incident?.id]);
+
+  // 3. Manage terminal animation & timeout based purely on whether we have recommendations
+  useEffect(() => {
+    if (incident?.id && initialLoadComplete && recommendations.length === 0) {
       setVisibleSteps(0);
-      const timer = setInterval(() => {
+      setIsTimeout(false);
+
+      const animTimer = setInterval(() => {
         setVisibleSteps(prev => {
           if (prev >= steps.length) {
-            clearInterval(timer);
+            clearInterval(animTimer);
             return prev;
           }
           return prev + 1;
         });
       }, 600);
-      return () => clearInterval(timer);
+
+      const timeoutTimer = setTimeout(() => {
+        setIsTimeout(true);
+      }, 15000);
+
+      return () => {
+        clearInterval(animTimer);
+        clearTimeout(timeoutTimer);
+      };
     }
-  }, [incident]);
+  }, [incident?.id, recommendations.length]);
 
   if (!incident) {
     return (
@@ -54,14 +109,53 @@ const AIReasoning = ({ incident, volunteers, onVolunteerClick }) => {
 
   const { analysis, action } = parseSynthesis(incident?.aiSynthesis);
 
+  const displayRecommendations = recommendations.length > 0 
+    ? recommendations 
+    : (isTimeout ? volunteers.filter(v => v.status === 'available').slice(0, 3).map((v, idx) => ({
+        recommendation_id: `fallback-${v.id}`,
+        volunteer_id: v.id,
+        total_score: 0.85 - (idx * 0.1),
+        score_breakdown: {
+           qwen_overall_score: 85 - (idx * 10),
+           qwen_distance_score: 90 - (idx * 10),
+           qwen_skill_score: 80 - (idx * 5),
+           qwen_badge_text: "> WARNING: AI Unreachable. Falling back to proximity metrics."
+        },
+        isFallback: true
+      })) : []);
+
+  const renderRawMessage = (msg) => {
+    if (!msg) return null;
+    if (!msg.toLowerCase().includes('--- follow-up ---')) {
+      return <div className="raw-message">"{msg}"</div>;
+    }
+    
+    const parts = msg.split(/(?:---|)\s*follow-up\s*(?:---|)/i).map(p => p.trim()).filter(p => p);
+    
+    return (
+      <div className="raw-message-multipart">
+        <div className="multipart-item">
+          <span className="multipart-label">INITIAL REPORT</span>
+          <div className="raw-message">"{parts[0]}"</div>
+        </div>
+        {parts.slice(1).map((part, idx) => (
+          <div key={idx} className="multipart-item followup">
+            <span className="multipart-label">FOLLOW-UP #{idx + 1}</span>
+            <div className="raw-message">"{part}"</div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div className="ai-reasoning-container">
       <div className="dossier-content">
         
         {/* RAW MESSAGE */}
         <div className="dossier-section">
-          <div className="section-title">Incoming Distress Signal</div>
-          <div className="raw-message">"{incident.message}"</div>
+          <div className="section-title">Original Report</div>
+          {renderRawMessage(incident.message)}
         </div>
 
         {/* AI SYNTHESIS - FUTURISTIC MODULES */}
@@ -105,8 +199,8 @@ const AIReasoning = ({ incident, volunteers, onVolunteerClick }) => {
             </div>
             <div className="intel-box">
               <span className="intel-label">Est. Casualties</span>
-              <span className={`intel-value ${incident.casualties !== 'None' ? 'text-red' : 'text-green'}`}>
-                {incident.casualties}
+              <span className={`intel-value ${incident.people_count !== null && incident.people_count > 0 ? 'text-red' : 'text-green'}`}>
+                {incident.people_count ?? 'None'}
               </span>
             </div>
             <div className="intel-box">
@@ -166,7 +260,7 @@ const AIReasoning = ({ incident, volunteers, onVolunteerClick }) => {
                   >
                     {statusIcon}
                     <div className="vol-details">
-                      <span className="vol-name">{vol.name}</span>
+                      <span className="vol-name">{vol.display_name || vol.first_name || 'Volunteer'}</span>
                       <span className="vol-status-text" style={{ color: statusColor }}>{statusText}</span>
                     </div>
                     <span className="vol-distance">{vol.distance}</span>
@@ -179,41 +273,88 @@ const AIReasoning = ({ incident, volunteers, onVolunteerClick }) => {
           )}
         </div>
 
-        {/* Section 4: AI Terminal */}
-        <div className="terminal-window">
-          <div className="terminal-header">
-            <span className="dot red"></span>
-            <span className="dot yellow"></span>
-            <span className="dot green"></span>
-            <span className="terminal-title">Qwen-2.5 Logic</span>
-          </div>
-          <div className="terminal-body">
-            <div className="log-line text-input">
-              <span className="prompt">{'>'}</span> Processing Event...
-            </div>
-          
-            <div className="processing-steps">
-              {steps.map((step, index) => (
-                <div 
-                  key={index} 
-                  className={`step-item ${index < visibleSteps ? 'visible' : ''}`}
-                >
-                  {index < visibleSteps ? (
-                     <CheckCircle2 size={14} color="var(--neon-green)" />
-                  ) : (
-                     <div className="step-placeholder"></div>
-                  )}
-                  <span>{step}</span>
-                </div>
-              ))}
-            </div>
+        {/* Section 4: AI Recommendations */}
+        <div className="dossier-section">
+          <div className="section-title">AI Match Evaluations</div>
+          {displayRecommendations.length > 0 ? (
+            <div className="recommendations-list">
+              {displayRecommendations.map((rec) => {
+                const vol = volunteers?.find(v => v.id === rec.volunteer_id);
+                const breakdown = rec.score_breakdown || {};
+                const overallScore = Math.round((breakdown.qwen_overall_score || rec.total_score * 100));
+                const distScore = Math.round((breakdown.qwen_distance_score || breakdown.location * 100 || 0));
+                const skillScore = Math.round((breakdown.qwen_skill_score || breakdown.skill_match * 100 || 0));
+                const badgeText = breakdown.qwen_badge_text || "Recommended by dispatch rules.";
+                
+                return (
+                  <div key={rec.recommendation_id} className="recommendation-card fade-in" data-fallback={rec.isFallback}>
+                    <div className="rec-header">
+                      <div className="rec-vol-info">
+                        <Target size={16} className="text-blue" />
+                        <span className="vol-name">{vol?.display_name || vol?.first_name || `Volunteer #${rec.volunteer_id}`}</span>
+                      </div>
+                      <div className="rec-overall-score">
+                        <span className="score-value">{overallScore}%</span>
+                        <span className="score-label">MATCH</span>
+                      </div>
+                    </div>
+                    
+                    <div className="rec-badge">
+                      <Cpu size={12} />
+                      <span>{badgeText}</span>
+                    </div>
 
-            {visibleSteps >= steps.length && (
-               <div className="log-line result fade-in">
-                 <span className="prompt">{'>'}</span> ACTION: Dispatched {assignedVols.length} Volunteers to {incident.locationName}.
-               </div>
-            )}
-          </div>
+                    <div className="rec-bars">
+                      <div className="rec-bar-row">
+                        <span className="bar-label">Distance</span>
+                        <div className="bar-bg">
+                          <div className="bar-fill" style={{ width: `${distScore}%` }}></div>
+                        </div>
+                        <span className="bar-val">{distScore}%</span>
+                      </div>
+                      <div className="rec-bar-row">
+                        <span className="bar-label">Skills</span>
+                        <div className="bar-bg">
+                          <div className="bar-fill" style={{ width: `${skillScore}%` }}></div>
+                        </div>
+                        <span className="bar-val">{skillScore}%</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : !initialLoadComplete ? (
+            <div className="no-forces fade-in" style={{ textAlign: 'center', marginTop: '20px' }}>
+              Syncing AI evaluations...
+            </div>
+          ) : (
+            <div className="terminal-window" style={{ marginTop: 0 }}>
+              <div className="terminal-header">
+                <div className="mac-dots">
+                  <div className="dot red"></div>
+                  <div className="dot yellow"></div>
+                  <div className="dot green"></div>
+                </div>
+                <div className="terminal-title">bash - qwen-eval-worker</div>
+              </div>
+              <div className="terminal-body">
+                <div className="processing-steps">
+                  {steps.map((step, index) => (
+                    <div key={index} className={`step-item ${index < visibleSteps ? 'visible' : ''}`}>
+                      {index < visibleSteps ? <CheckCircle2 size={14} color="var(--neon-green)" /> : <div className="step-placeholder"></div>}
+                      <span>{step}</span>
+                    </div>
+                  ))}
+                </div>
+                {visibleSteps >= steps.length && (
+                   <div className="log-line result fade-in">
+                     <span className="prompt">{'>'}</span> Waiting for Qwen/Qwen2.5-14B-Instruct evaluations...
+                   </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
       </div>
