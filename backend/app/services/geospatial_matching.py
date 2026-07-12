@@ -1,3 +1,5 @@
+import logging
+
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -10,6 +12,8 @@ from app.services.dispatch_matching import (
     VolunteerMatchingService,
 )
 from app.services.geocoding import GeoPoint, haversine_distance_km
+
+logger = logging.getLogger(__name__)
 
 
 class GeospatialVolunteerMatchingService(VolunteerMatchingService):
@@ -24,13 +28,23 @@ class GeospatialVolunteerMatchingService(VolunteerMatchingService):
         limit: int = 3,
     ) -> DispatchRecommendationBatch:
         if not settings.geocoding_enabled:
+            logger.info(
+                "geospatial_matching_disabled incident_id=%s fallback=text_matching",
+                incident_id,
+            )
             return super().recommend_for_incident(incident_id=incident_id, limit=limit)
 
         incident = self.db.get(Incident, incident_id)
         if incident is None:
+            logger.warning("geospatial_matching_failed incident_id=%s reason=incident_not_found", incident_id)
             raise ValueError("Incident was not found.")
 
         if incident.latitude is None or incident.longitude is None:
+            logger.warning(
+                "geospatial_matching_blocked incident_id=%s reason=incident_coordinates_missing location_text=%r",
+                incident_id,
+                incident.location_text,
+            )
             self._remove_recommendations(incident_id)
             return DispatchRecommendationBatch(
                 incident_id=incident.id,
@@ -39,13 +53,33 @@ class GeospatialVolunteerMatchingService(VolunteerMatchingService):
                 recommendations=[],
             )
 
+        logger.info(
+            "geospatial_matching_started incident_id=%s latitude=%.6f longitude=%.6f location_source=%s limit=%s",
+            incident_id,
+            incident.latitude,
+            incident.longitude,
+            incident.location_source or "unknown",
+            limit,
+        )
         base_batch = super().recommend_for_incident(incident_id=incident_id, limit=100)
         incident_point = GeoPoint(incident.latitude, incident.longitude, source=incident.location_source or "stored")
         eligible: list[tuple[DispatchRecommendationResult, float, float]] = []
 
         for recommendation in base_batch.recommendations:
             volunteer = self.db.get(Volunteer, recommendation.volunteer_id)
-            if volunteer is None or volunteer.latitude is None or volunteer.longitude is None:
+            if volunteer is None:
+                logger.warning(
+                    "volunteer_excluded incident_id=%s volunteer_id=%s reason=volunteer_not_found",
+                    incident_id,
+                    recommendation.volunteer_id,
+                )
+                continue
+            if volunteer.latitude is None or volunteer.longitude is None:
+                logger.info(
+                    "volunteer_excluded incident_id=%s volunteer_id=%s reason=coordinates_missing",
+                    incident_id,
+                    volunteer.id,
+                )
                 continue
 
             volunteer_point = GeoPoint(
@@ -55,7 +89,30 @@ class GeospatialVolunteerMatchingService(VolunteerMatchingService):
             )
             distance_km = haversine_distance_km(incident_point, volunteer_point)
             max_distance = self._max_distance_km(volunteer)
-            if max_distance is None or max_distance <= 0 or distance_km > max_distance:
+            if max_distance is None:
+                logger.info(
+                    "volunteer_excluded incident_id=%s volunteer_id=%s reason=max_distance_missing distance_km=%.3f",
+                    incident_id,
+                    volunteer.id,
+                    distance_km,
+                )
+                continue
+            if max_distance <= 0:
+                logger.info(
+                    "volunteer_excluded incident_id=%s volunteer_id=%s reason=invalid_max_distance max_distance_km=%.3f",
+                    incident_id,
+                    volunteer.id,
+                    max_distance,
+                )
+                continue
+            if distance_km > max_distance:
+                logger.info(
+                    "volunteer_excluded incident_id=%s volunteer_id=%s reason=outside_travel_radius distance_km=%.3f max_distance_km=%.3f",
+                    incident_id,
+                    volunteer.id,
+                    distance_km,
+                    max_distance,
+                )
                 continue
 
             distance_score = max(0.0, 1.0 - (distance_km / max_distance))
@@ -65,6 +122,15 @@ class GeospatialVolunteerMatchingService(VolunteerMatchingService):
                 recommendation.total_score
                 - previous_location * location_weight
                 + distance_score * location_weight
+            )
+            logger.info(
+                "volunteer_eligible incident_id=%s volunteer_id=%s distance_km=%.3f max_distance_km=%.3f base_score=%.6f adjusted_score=%.6f",
+                incident_id,
+                volunteer.id,
+                distance_km,
+                max_distance,
+                recommendation.total_score,
+                adjusted_total,
             )
             eligible.append((recommendation, distance_km, adjusted_total))
 
@@ -103,8 +169,23 @@ class GeospatialVolunteerMatchingService(VolunteerMatchingService):
                     score_breakdown=breakdown,
                 )
             )
+            logger.info(
+                "volunteer_ranked incident_id=%s volunteer_id=%s rank=%s total_score=%.6f distance_km=%.3f",
+                incident_id,
+                row.volunteer_id,
+                rank,
+                row.total_score,
+                distance_km,
+            )
 
         self.db.commit()
+        logger.info(
+            "geospatial_matching_completed incident_id=%s base_candidates=%s eligible_candidates=%s selected_candidates=%s",
+            incident_id,
+            len(base_batch.recommendations),
+            len(eligible),
+            len(results),
+        )
         return DispatchRecommendationBatch(
             incident_id=base_batch.incident_id,
             scenario=base_batch.scenario,
@@ -113,10 +194,11 @@ class GeospatialVolunteerMatchingService(VolunteerMatchingService):
         )
 
     def _remove_recommendations(self, incident_id: int) -> None:
-        self.db.query(DispatchRecommendation).filter(
+        removed = self.db.query(DispatchRecommendation).filter(
             DispatchRecommendation.incident_id == incident_id
         ).delete(synchronize_session=False)
         self.db.commit()
+        logger.info("dispatch_recommendations_removed incident_id=%s removed=%s", incident_id, removed)
 
     def _max_distance_km(self, volunteer: Volunteer | None) -> float | None:
         if volunteer is None:
