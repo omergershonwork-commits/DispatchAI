@@ -11,6 +11,7 @@ def sync_assigned_force(
     status: str,
     dispatch_id: int | None = None,
     distance: str | None = None,
+    distance_km: float | None = None,
 ) -> None:
     """Upsert one volunteer's latest assignment state in incident metadata."""
 
@@ -21,13 +22,19 @@ def sync_assigned_force(
     current = metadata.get("assigned_forces")
     assigned_forces = [dict(item) for item in current if isinstance(item, dict)] if isinstance(current, list) else []
 
+    resolved_distance = distance
+    if distance_km is not None:
+        resolved_distance = f"{float(distance_km):.1f} km"
+
     entry: dict[str, Any] = {
         "volunteer_id": volunteer.id,
         "name": volunteer.display_name or volunteer.source_username or f"Volunteer {volunteer.id}",
         "status": status,
-        "distance": distance if distance is not None else volunteer_distance_text(volunteer),
+        "distance": resolved_distance if resolved_distance is not None else volunteer_distance_text(volunteer),
         "updated_at": datetime.now(UTC).isoformat(),
     }
+    if distance_km is not None:
+        entry["distance_km"] = round(float(distance_km), 3)
     if dispatch_id is not None:
         entry["dispatch_id"] = dispatch_id
 
@@ -43,8 +50,6 @@ def sync_assigned_force(
 
 
 def volunteer_distance_text(volunteer: Volunteer) -> str | None:
-    """Return an available precomputed distance without fabricating coordinates."""
-
     metadata = volunteer.metadata_json or {}
     for key in ("distance_text", "estimated_distance_text"):
         value = metadata.get(key)

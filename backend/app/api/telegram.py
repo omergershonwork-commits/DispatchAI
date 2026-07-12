@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
@@ -5,6 +7,7 @@ from app.core.config import settings
 from app.db.session import get_db
 from app.schemas.incident import IncidentExtractionResult
 from app.schemas.telegram import TelegramWebhookAccepted, TelegramWebhookUpdate
+from app.services.geocoding import GeocodingError, GeocodingService
 from app.services.incident_auto_dispatch import (
     IncidentAutoDispatchError,
     IncidentAutoDispatchResult,
@@ -37,11 +40,13 @@ def get_incident_persistence_service(db: Session = Depends(get_db)) -> IncidentP
     return IncidentPersistenceService(db)
 
 
+def get_geocoding_service() -> GeocodingService:
+    return GeocodingService()
+
+
 def get_incident_auto_dispatch_service(
     db: Session = Depends(get_db),
 ) -> IncidentAutoDispatchService | None:
-    """Return automatic dispatch support only when the volunteer bot is configured."""
-
     if not settings.telegram_volunteer_bot_token.strip():
         return None
     return IncidentAutoDispatchService(
@@ -63,10 +68,11 @@ def receive_telegram_webhook(
     update: TelegramWebhookUpdate,
     extraction_service: IncidentExtractionService = Depends(get_incident_extraction_service),
     incident_persistence_service: IncidentPersistenceService = Depends(get_incident_persistence_service),
+    geocoding_service: GeocodingService = Depends(get_geocoding_service),
     auto_dispatch_service: IncidentAutoDispatchService | None = Depends(get_incident_auto_dispatch_service),
     telegram_bot_client: TelegramBotClient = Depends(get_telegram_bot_client),
 ) -> TelegramWebhookAccepted:
-    """Accept an incident Telegram update, preserve recent context, persist it, and reply."""
+    """Accept text or GPS incident updates, resolve coordinates, persist, and dispatch."""
 
     message = update.message
     extraction: IncidentExtractionResult | None = None
@@ -77,9 +83,20 @@ def receive_telegram_webhook(
     telegram_reply_sent = False
     telegram_reply_error: str | None = None
 
-    if message and message.text and message.text.strip():
+    has_content = bool(
+        message
+        and (
+            (message.text and message.text.strip())
+            or message.location is not None
+        )
+    )
+    if message and has_content:
         source_context = build_telegram_source_context(update)
-        command = message.text.strip().lower().split(maxsplit=1)[0]
+        command = (
+            message.text.strip().lower().split(maxsplit=1)[0]
+            if message.text and message.text.strip()
+            else ""
+        )
 
         if command in NEW_COMMANDS or command in CANCEL_COMMANDS:
             try:
@@ -96,6 +113,19 @@ def receive_telegram_webhook(
                 extraction = extraction_service.extract_from_text(extraction_text)
             except (IncidentExtractionError, IncidentPersistenceError, QwenClientError, ValueError):
                 extraction_error = EXTRACTION_UNAVAILABLE_ERROR
+
+            if extraction is not None and source_context.latitude is None and extraction.location_text:
+                try:
+                    point = geocoding_service.geocode(extraction.location_text)
+                except GeocodingError:
+                    point = None
+                if point is not None:
+                    source_context = replace(
+                        source_context,
+                        latitude=point.latitude,
+                        longitude=point.longitude,
+                        location_source=point.source,
+                    )
 
             if extraction is not None:
                 try:
@@ -137,6 +167,7 @@ def receive_telegram_webhook(
         message_id=message.message_id if message else None,
         chat_id=message.chat.id if message else None,
         has_text=bool(message and message.text),
+        has_location=bool(message and message.location),
         extraction=extraction,
         extraction_error=extraction_error,
         incident_id=persistence_result.incident_id if persistence_result else None,
@@ -150,21 +181,22 @@ def receive_telegram_webhook(
 
 def build_telegram_source_context(update: TelegramWebhookUpdate) -> SourceIncidentContext:
     message = update.message
-    if message is None or message.text is None:
-        raise ValueError("Telegram text message is required to build source context.")
-
+    if message is None:
+        raise ValueError("Telegram message is required to build source context.")
+    text = message.text.strip() if message.text and message.text.strip() else "Shared GPS location"
     return SourceIncidentContext(
         source="telegram",
         source_update_id=update.update_id,
         source_message_id=message.message_id,
         source_chat_id=message.chat.id,
-        raw_text=message.text,
+        raw_text=text,
+        latitude=message.location.latitude if message.location else None,
+        longitude=message.location.longitude if message.location else None,
+        location_source="telegram_gps" if message.location else None,
     )
 
 
 def build_conversation_command_reply(command: str, closed: bool) -> str:
-    """Return a user-facing reply for /new or /cancel."""
-
     if command in NEW_COMMANDS:
         if closed:
             return "The previous unfinished report was closed. Send the new incident details now."
@@ -181,12 +213,11 @@ def build_telegram_reply_text(
     persistence_error: str | None = None,
     dispatch_result: IncidentAutoDispatchResult | None = None,
 ) -> str:
-    """Build a calm user-facing reply without exposing backend workflow details."""
-
     if extraction_error or extraction is None:
         return (
             "I received your message, but I still need clearer details. "
             "Please send what happened, your exact location, and the help you need. "
+            "You may also share your Telegram location. "
             "If there is immediate danger, contact local emergency services now."
         )
 
@@ -206,6 +237,7 @@ def build_telegram_reply_text(
         return (
             "Your report has been received. I need one more detail before it can be matched.\n"
             f"{extraction.follow_up_question}\n"
+            "You can type the address or share your Telegram location.\n"
             "You can send /cancel to discard this unfinished report or /new to start over.\n"
             "If there is immediate danger, contact local emergency services now."
         )
